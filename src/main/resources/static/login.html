@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统登录">
+  <title>登录 · AquaGuard 鱼塘溶氧后台</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/app.css">
+  <link rel="stylesheet" href="assets/login.css">
+</head>
+<body class="login-body">
+  <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
+    <symbol id="i-waves" viewBox="0 0 24 24">
+      <path d="M3 7.5c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M3 12c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M3 16.5c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-droplet" viewBox="0 0 24 24">
+      <path d="M12 3.5c3.2 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.3-6 5.5-10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M9.5 14.2a2.6 2.6 0 0 0 2.5 2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-fan" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 10c0-4-2.2-6-4.7-6-1.9 0-2.7 2.4-1.3 4.1C7.3 9.6 9.8 10 12 10Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M14 12c4 0 6-2.2 6-4.7 0-1.9-2.4-2.7-4.1-1.3C14.4 7.3 14 9.8 14 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M12 14c0 4 2.2 6 4.7 6 1.9 0 2.7-2.4 1.3-4.1C16.7 14.4 14.2 14 12 14Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M10 12c-4 0-6 2.2-6 4.7 0 1.9 2.4 2.7 4.1 1.3C9.6 16.7 10 14.2 10 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24">
+      <path d="M13 3 5 13.5h5.5L10 21l8-11h-5.5L13 3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-2.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="m8.8 12 2.2 2.2 4.2-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-user" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M5 20c.8-3.4 3.6-5.2 7-5.2s6.2 1.8 7 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24">
+      <rect x="4.5" y="10" width="15" height="10.5" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M8 10V7.6a4 4 0 0 1 8 0V10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="12" cy="15.2" r="1.3" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24">
+      <path d="M2.8 12S6.3 5.8 12 5.8 21.2 12 21.2 12 17.7 18.2 12 18.2 2.8 12 2.8 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="3.1" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24">
+      <path d="M4 4.5 20 20.5M9.7 6.2A10.6 10.6 0 0 1 12 5.8c5.7 0 9.2 6.2 9.2 6.2a17 17 0 0 1-3.1 3.7M6.4 8.1A17 17 0 0 0 2.8 12S6.3 18.2 12 18.2c1.1 0 2.1-.2 3-.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.9 10.1a3.1 3.1 0 0 0 4.1 4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24">
+      <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24">
+      <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-alert-triangle" viewBox="0 0 24 24">
+      <path d="M12 3.8 21 20H3L12 3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M12 9v5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <circle cx="12" cy="17" r="1.1" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24">
+      <path d="M3 12h4l2.2-6 4.2 12 2.4-6H21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+
+  <button class="icon-btn login-theme" id="themeBtn" type="button" aria-label="切换深浅色主题" title="切换主题">
+    <svg class="icon"><use href="#i-moon"></use></svg>
+  </button>
+
+  <main class="login-shell">
+    <section class="login-story" aria-label="AquaGuard 系统简介">
+      <div class="story-glow" aria-hidden="true"></div>
+      <div class="story-bubbles" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+
+      <div class="story-brand">
+        <div class="story-mark"><svg class="icon"><use href="#i-waves"></use></svg></div>
+        <div class="story-brand-text">
+          <strong>AquaGuard</strong>
+          <span>鱼塘溶氧后台</span>
+        </div>
+      </div>
+
+      <div class="story-copy">
+        <span class="story-eyebrow"><span class="story-dot"></span>Pond Agent · 智能增氧 MVP</span>
+        <h1>让每一口鱼塘<br><em>呼吸得刚刚好</em></h1>
+        <p class="story-lead">把溶氧、水温、增氧机与分时电价放在同一张图上，用可解释的策略替你看护鱼塘。</p>
+
+        <ul class="story-features">
+          <li>
+            <span class="feature-ico"><svg class="icon"><use href="#i-droplet"></use></svg></span>
+            <div><strong>实时溶氧曲线</strong><span>当前值、历史趋势与 30 分钟预测</span></div>
+          </li>
+          <li>
+            <span class="feature-ico"><svg class="icon"><use href="#i-fan"></use></svg></span>
+            <div><strong>自动增氧决策</strong><span>阈值控制、安全否决与手动接管</span></div>
+          </li>
+          <li>
+            <span class="feature-ico"><svg class="icon"><use href="#i-bolt"></use></svg></span>
+            <div><strong>分时电价优化</strong><span>低谷时段提前补氧，兼顾成本与安全</span></div>
+          </li>
+        </ul>
+      </div>
+
+      <div class="story-foot">
+        <span>POND 01 · 溶氧智能管理</span>
+        <span class="story-status"><span class="dot"></span>运行中</span>
+      </div>
+
+      <svg class="story-wave" viewBox="0 0 600 160" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 92c60-34 120-34 180 0s120 34 180 0 120-34 180 0 60 20 60 20v48H0Z" fill="rgba(255,255,255,0.055)"/>
+        <path d="M0 118c70-28 130-28 200 0s130 28 200 0 130-28 200 0v42H0Z" fill="rgba(255,255,255,0.045)"/>
+      </svg>
+    </section>
+
+    <section class="login-panel" aria-label="登录表单">
+      <div class="login-card">
+        <div class="login-card-head">
+          <div class="login-mini-mark"><svg class="icon"><use href="#i-waves"></use></svg></div>
+          <span class="login-eyebrow">AQUAGUARD CONSOLE</span>
+          <h2>欢迎回来</h2>
+          <p>登录后进入鱼塘溶氧监控台</p>
+        </div>
+
+        <div class="login-alert" id="loginAlert" role="alert" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-alert-triangle"></use></svg>
+          <span id="loginAlertText"></span>
+        </div>
+
+        <form id="loginForm" novalidate>
+          <label class="login-field" for="username">
+            <span class="login-label">用户名</span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
+              <input id="username" name="username" type="text" maxlength="32"
+                     autocomplete="username" placeholder="请输入用户名" spellcheck="false" required>
+            </span>
+          </label>
+
+          <label class="login-field" for="password">
+            <span class="login-label">密码</span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg>
+              <input id="password" name="password" type="password" maxlength="64"
+                     autocomplete="current-password" placeholder="请输入密码" required>
+              <button class="pwd-toggle" id="pwdToggle" type="button"
+                      aria-label="显示密码" aria-pressed="false" title="显示密码">
+                <svg class="icon"><use href="#i-eye"></use></svg>
+              </button>
+            </span>
+          </label>
+
+          <div class="login-options">
+            <label class="login-remember">
+              <input id="rememberUser" type="checkbox">
+              <span>记住用户名</span>
+            </label>
+            <span class="login-secure"><svg class="icon"><use href="#i-shield"></use></svg>会话保护</span>
+          </div>
+
+          <button class="btn primary login-submit" id="loginBtn" type="submit">
+            <span class="login-submit-text">登录管理台</span>
+            <svg class="icon login-submit-arrow" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+          </button>
+        </form>
+
+        <p class="login-foot">
+          <svg class="icon"><use href="#i-activity"></use></svg>
+          登录状态由服务端会话维护，2 小时无操作自动失效
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/api.js"></script>
+  <script src="assets/ui.js"></script>
+  <script src="assets/login.js"></script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统 · 溶氧实时监控、增氧策略、分时电价与告警中心">
+  <title>AquaGuard · 鱼塘溶氧后台管理系统</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/app.css?v=20261105-1">
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
+    <symbol id="i-waves" viewBox="0 0 24 24">
+      <path d="M3 7.5c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M3 12c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M3 16.5c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24">
+      <path d="M4.5 18a8.5 8.5 0 1 1 15 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M12 13.5 16 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="12" cy="13.5" r="1.7" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <circle cx="8" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    </symbol>
+    <symbol id="i-fan" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 10c0-4-2.2-6-4.7-6-1.9 0-2.7 2.4-1.3 4.1C7.3 9.6 9.8 10 12 10Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M14 12c4 0 6-2.2 6-4.7 0-1.9-2.4-2.7-4.1-1.3C14.4 7.3 14 9.8 14 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M12 14c0 4 2.2 6 4.7 6 1.9 0 2.7-2.4 1.3-4.1C16.7 14.4 14.2 14 12 14Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M10 12c-4 0-6 2.2-6 4.7 0 1.9 2.4 2.7 4.1 1.3C9.6 16.7 10 14.2 10 12Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24">
+      <path d="M13 3 5 13.5h5.5L10 21l8-11h-5.5L13 3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24">
+      <path d="M6 10a6 6 0 0 1 12 0c0 3 .8 4.8 2 6H4c1.2-1.2 2-3 2-6Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M9.5 19a2.6 2.6 0 0 0 5 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-list" viewBox="0 0 24 24">
+      <path d="M9 6h11M9 12h11M9 18h11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="4.5" cy="6" r="1.3" fill="currentColor"/>
+      <circle cx="4.5" cy="12" r="1.3" fill="currentColor"/>
+      <circle cx="4.5" cy="18" r="1.3" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24">
+      <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24">
+      <path d="M19 8a7.5 7.5 0 0 0-12.5-2L4 8.5M4 4v4.5h4.5M5 16a7.5 7.5 0 0 0 12.5 2l2.5-2.5M20 20v-4.5h-4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-play" viewBox="0 0 24 24">
+      <path d="M8 5.5 18 12 8 18.5v-13Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24">
+      <rect x="6.5" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/>
+      <rect x="13.9" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24">
+      <path d="m5 12.5 4.5 4.5L19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.7" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="m8 12 2.7 2.7L16 9.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24">
+      <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M4.5 7h15M9 7V4.8h6V7M7 7l.8 12h8.4L17 7M10 11v4.5M14 11v4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-user" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M5 20c.8-3.4 3.6-5.2 7-5.2s6.2 1.8 7 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24">
+      <path d="M10 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19H10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 8l4 4-4 4M18 12H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-alert-triangle" viewBox="0 0 24 24">
+      <path d="M12 3.8 21 20H3L12 3.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M12 9v5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <circle cx="12" cy="17" r="1.1" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-info" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.7" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <circle cx="12" cy="7.8" r="1.1" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-droplet" viewBox="0 0 24 24">
+      <path d="M12 3.5c3.2 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.3-6 5.5-10Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M9.5 14.2a2.6 2.6 0 0 0 2.5 2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-thermometer" viewBox="0 0 24 24">
+      <path d="M10 13.5V6a2 2 0 1 1 4 0v7.5a4 4 0 1 1-4 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M12 16.8v-1.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-power" viewBox="0 0 24 24">
+      <path d="M12 3v8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M6.4 6.8a8 8 0 1 0 11.2 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-database" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="6" rx="7.5" ry="3" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    </symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24">
+      <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24">
+      <path d="m14 6-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24">
+      <path d="m10 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24">
+      <path d="M12 3.5 19 6v5.5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-2.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="m8.8 12 2.2 2.2 4.2-4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24">
+      <path d="M3 12h4l2.2-6 4.2 12 2.4-6H21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24">
+      <rect x="4" y="5.5" width="16" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24">
+      <path d="M11 3.5 12.9 9l5.6 1.9-5.6 1.9L11 18.4 9.1 12.8 3.5 10.9 9.1 9 11 3.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="m18.5 15.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="currentColor"/>
+    </symbol>
+  </svg>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><svg class="icon"><use href="#i-waves"></use></svg></div>
+        <div class="brand-text">
+          <strong>AquaGuard</strong>
+          <span>鱼塘溶氧后台</span>
+        </div>
+      </div>
+
+      <div class="pond-chip">
+        <span class="pond-pulse"></span>
+        <div>
+          <strong id="sidebarPondName">一号塘</strong>
+          <span>智慧增氧 · MVP</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <p class="nav-label">运行控制</p>
+        <a class="nav-item" href="#/overview" data-route="overview">
+          <svg class="icon"><use href="#i-gauge"></use></svg><span>实时监控</span>
+        </a>
+        <a class="nav-item" href="#/clock" data-route="clock">
+          <svg class="icon"><use href="#i-clock"></use></svg><span>鱼塘时钟</span>
+        </a>
+
+        <p class="nav-label">参数配置</p>
+        <a class="nav-item" href="#/pond" data-route="pond">
+          <svg class="icon"><use href="#i-sliders"></use></svg><span>水体参数</span>
+        </a>
+        <a class="nav-item" href="#/aerator" data-route="aerator">
+          <svg class="icon"><use href="#i-fan"></use></svg><span>增氧策略</span>
+        </a>
+        <a class="nav-item" href="#/ponds" data-route="ponds">
+          <svg class="icon"><use href="#i-waves"></use></svg><span>鱼塘管理</span>
+          <span class="nav-badge" id="pondCountBadge" hidden>1</span>
+        </a>
+        <a class="nav-item" href="#/electricity" data-route="electricity">
+          <svg class="icon"><use href="#i-bolt"></use></svg><span>电价管理</span>
+        </a>
+
+        <p class="nav-label">记录与系统</p>
+        <a class="nav-item" href="#/alerts" data-route="alerts">
+          <svg class="icon"><use href="#i-bell"></use></svg><span>告警中心</span>
+          <span class="nav-badge" id="alertBadge" hidden>0</span>
+        </a>
+        <a class="nav-item" href="#/logs" data-route="logs">
+          <svg class="icon"><use href="#i-list"></use></svg><span>系统日志</span>
+        </a>
+        <a class="nav-item" href="#/settings" data-route="settings">
+          <svg class="icon"><use href="#i-settings"></use></svg><span>系统设置</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="sidebar-note">
+          <svg class="icon"><use href="#i-activity"></use></svg>
+          <span>玩具水体模型<br>每秒推进仿真</span>
+        </div>
+        <span class="version">AquaGuard v1.0</span>
+      </div>
+    </aside>
+    <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开导航">
+          <svg class="icon"><use href="#i-menu"></use></svg>
+        </button>
+        <div class="topbar-loc">
+          <span class="topbar-eyebrow" id="topPondEyebrow">POND --</span>
+          <strong id="topPageName">实时监控</strong>
+        </div>
+
+        <div class="pond-switch">
+          <svg class="icon"><use href="#i-waves"></use></svg>
+          <select class="pond-select" id="pondSelect" aria-label="切换当前鱼塘" title="切换当前鱼塘"></select>
+          <a class="icon-btn pond-manage" href="#/ponds" title="管理 / 新增鱼塘" aria-label="管理鱼塘">
+            <svg class="icon"><use href="#i-plus"></use></svg>
+          </a>
+        </div>
+
+        <div class="topbar-status">
+          <span class="conn-pill" id="connPill" title="后端连接状态">
+            <span class="dot"></span><span id="connText">连接中…</span>
+          </span>
+          <span class="top-pill" title="鱼塘时间">
+            <svg class="icon"><use href="#i-clock"></use></svg>
+            <span id="topPondTime">--</span>
+          </span>
+          <span class="top-pill aerator" id="topAeratorPill" title="增氧机状态">
+            <span class="dot"></span><span id="topAeratorText">--</span>
+          </span>
+          <div class="user-chip" title="当前登录用户，写操作会以此身份记录到系统日志">
+            <span class="user-avatar" id="userAvatar">A</span>
+            <span class="user-meta">
+              <strong id="currentUserName">--</strong>
+              <span id="currentUserRole">已登录</span>
+            </span>
+          </div>
+          <button class="icon-btn logout-btn" id="logoutBtn" type="button" aria-label="退出登录" title="退出登录">
+            <svg class="icon"><use href="#i-logout"></use></svg>
+          </button>
+          <button class="icon-btn" id="themeBtn" aria-label="切换深浅色主题" title="切换主题">
+            <svg class="icon"><use href="#i-moon"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="pages" id="pages">
+        <section class="view" id="view-overview" data-view="overview"></section>
+        <section class="view" id="view-clock" data-view="clock"></section>
+        <section class="view" id="view-pond" data-view="pond"></section>
+        <section class="view" id="view-aerator" data-view="aerator"></section>
+        <section class="view" id="view-electricity" data-view="electricity"></section>
+        <section class="view" id="view-alerts" data-view="alerts"></section>
+        <section class="view" id="view-logs" data-view="logs"></section>
+        <section class="view" id="view-ponds" data-view="ponds"></section>
+        <section class="view" id="view-settings" data-view="settings"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-root" id="toastRoot" aria-live="polite"></div>
+  <div id="modalRoot"></div>
+  <div id="assistantRoot"></div>
+
+  <script src="assets/api.js?v=20261105-1"></script>
+  <script src="assets/ui.js?v=20261105-1"></script>
+  <script src="assets/chart.js?v=20261105-1"></script>
+  <script src="assets/app.js?v=20261105-2"></script>
+</body>
+</html>
