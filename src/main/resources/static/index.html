@@ -6,9 +6,9 @@
   <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统 · 溶氧实时监控、增氧策略、分时电价与告警中心">
   <title>AquaGuard · 鱼塘溶氧后台管理系统</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/app.css?v=20261105-1">
+  <link rel="stylesheet" href="assets/app.css?v=20261105-3">
 </head>
-<body>
+<body class="app-body">
   <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
     <symbol id="i-waves" viewBox="0 0 24 24">
       <path d="M3 7.5c2.2-2.4 4.4-2.4 6.6 0s4.4 2.4 6.6 0 4.4-2.4 6.6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -148,6 +148,20 @@
       <path d="m18.5 15.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="currentColor"/>
     </symbol>
   </svg>
+
+  <div class="aqua-backdrop" aria-hidden="true">
+    <span class="aqua-glow aqua-glow-a"></span>
+    <span class="aqua-glow aqua-glow-b"></span>
+    <svg class="aqua-waves" viewBox="0 0 1440 300" preserveAspectRatio="none" focusable="false">
+      <path class="wave-c" d="M0 214c168-34 286-54 436-26 160 30 246 86 430 72 172-13 260-76 574-34v74H0Z"/>
+      <path class="wave-b" d="M0 244c190-44 326-20 482 14 162 35 268 26 424-8 188-41 344-34 534 2v48H0Z"/>
+      <path class="wave-a" d="M0 268c206-30 350-8 512 10 170 19 296 10 452-12 172-25 300-22 476 6v28H0Z"/>
+      <path class="wave-line" d="M0 214c168-34 286-54 436-26 160 30 246 86 430 72 172-13 260-76 574-34"/>
+    </svg>
+    <div class="aqua-bubbles">
+      <span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+  </div>
 
   <div class="app">
     <aside class="sidebar" id="sidebar">

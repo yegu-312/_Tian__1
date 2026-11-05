@@ -1809,6 +1809,200 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 /* --------------------------------------------------------------------------
+   登录后水域背景：呼应登录页的深青故事面板
+   -------------------------------------------------------------------------- */
+
+.app-body {
+  background:
+    radial-gradient(1100px 620px at 10% -10%, rgba(37, 185, 167, 0.26), transparent 62%),
+    radial-gradient(1000px 560px at 96% 2%, rgba(47, 127, 224, 0.16), transparent 60%),
+    radial-gradient(900px 620px at 50% 112%, rgba(11, 139, 128, 0.22), transparent 64%),
+    linear-gradient(168deg, #e4f5f3 0%, #d5ecec 38%, #cfe6e8 68%, #dcefee 100%);
+  background-attachment: fixed;
+}
+
+.aqua-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app { position: relative; z-index: 1; }
+
+.aqua-glow {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+}
+
+.aqua-glow-a {
+  width: 860px;
+  height: 620px;
+  top: -320px;
+  left: -220px;
+  background: radial-gradient(closest-side, rgba(37, 185, 167, 0.3), transparent 70%);
+}
+
+.aqua-glow-b {
+  width: 980px;
+  height: 660px;
+  top: -300px;
+  right: -320px;
+  background: radial-gradient(closest-side, rgba(47, 127, 224, 0.18), transparent 70%);
+}
+
+.aqua-waves {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  width: 100%;
+  height: clamp(170px, 26vh, 300px);
+}
+
+.wave-a { fill: rgba(7, 93, 89, 0.1); }
+.wave-b { fill: rgba(37, 185, 167, 0.11); }
+.wave-c { fill: rgba(5, 45, 49, 0.055); }
+.wave-line { fill: none; stroke: rgba(11, 139, 128, 0.25); stroke-width: 1.4; }
+
+.aqua-bubbles { position: absolute; inset: 0; }
+
+.aqua-bubbles span {
+  position: absolute;
+  bottom: -46px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(11, 139, 128, 0.22);
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.9), rgba(37, 185, 167, 0.14) 62%, transparent 72%);
+  opacity: 0;
+  animation: bubbleRise 24s linear infinite;
+}
+
+.aqua-bubbles span:nth-child(1) { left: 7%; width: 13px; height: 13px; animation-delay: -3s; }
+.aqua-bubbles span:nth-child(2) { left: 21%; width: 7px; height: 7px; animation-duration: 19s; animation-delay: -11s; }
+.aqua-bubbles span:nth-child(3) { left: 42%; width: 20px; height: 20px; animation-duration: 31s; animation-delay: -17s; }
+.aqua-bubbles span:nth-child(4) { left: 61%; width: 9px; height: 9px; animation-duration: 22s; animation-delay: -7s; }
+.aqua-bubbles span:nth-child(5) { left: 79%; width: 16px; height: 16px; animation-duration: 28s; animation-delay: -21s; }
+.aqua-bubbles span:nth-child(6) { left: 92%; width: 8px; height: 8px; animation-duration: 20s; animation-delay: -14s; }
+
+@keyframes bubbleRise {
+  0% { transform: translate3d(0, 0, 0) scale(0.8); opacity: 0; }
+  10% { opacity: 0.6; }
+  75% { opacity: 0.34; }
+  100% { transform: translate3d(18px, -108vh, 0) scale(1.05); opacity: 0; }
+}
+
+/* 顶栏：深青玻璃带，与登录页右侧故事面板同色系 */
+.topbar {
+  color: #eafffb;
+  background:
+    radial-gradient(560px 120px at 18% -30%, rgba(120, 255, 235, 0.2), transparent 70%),
+    linear-gradient(118deg, rgba(5, 45, 49, 0.96) 0%, rgba(7, 74, 71, 0.93) 50%, rgba(8, 60, 64, 0.95) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 18px 40px -34px rgba(3, 30, 34, 0.9);
+  backdrop-filter: blur(20px) saturate(1.25);
+}
+
+.topbar .topbar-eyebrow { color: #6fe9d9; }
+.topbar-loc strong { color: #f2fffd; }
+
+.topbar .pond-switch,
+.topbar .conn-pill,
+.topbar .top-pill,
+.topbar .user-chip,
+.topbar .icon-btn {
+  background: rgba(255, 255, 255, 0.085);
+  border-color: rgba(255, 255, 255, 0.17);
+  color: #e2faf6;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.topbar .pond-switch > .icon { color: #77e8d8; }
+.topbar .pond-select { color: #f2fffd; }
+.topbar .pond-select:disabled { color: #a7cbc8; }
+.topbar .pond-select option { color: #102a30; background: #ffffff; }
+
+.topbar .top-pill .icon { color: #9fd8d3; }
+.topbar .user-meta strong { color: #f3fffd; }
+.topbar .user-meta span { color: #a9d3d0; }
+.topbar .user-avatar { color: #04231f; }
+
+.topbar .conn-pill.online .dot { box-shadow: 0 0 0 4px rgba(72, 207, 140, 0.16); }
+.topbar .conn-pill.offline { color: #ffb1b1; border-color: rgba(244, 113, 113, 0.42); }
+.topbar .top-pill.paused { color: #ffd189; border-color: rgba(240, 176, 74, 0.4); }
+
+.topbar .icon-btn:hover {
+  background: rgba(120, 255, 235, 0.17);
+  border-color: rgba(120, 255, 235, 0.34);
+  color: #ffffff;
+}
+
+.topbar .logout-btn:hover {
+  background: rgba(244, 113, 113, 0.17);
+  border-color: rgba(244, 113, 113, 0.4);
+  color: #ffe3e3;
+}
+
+/* 内容卡片：轻微透亮的水玻璃，让背景水光透出来 */
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(249, 253, 253, 0.89) 100%);
+  border-color: rgba(198, 228, 228, 0.92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 3px rgba(5, 58, 62, 0.03),
+    0 22px 44px -34px rgba(5, 58, 62, 0.55);
+}
+
+/* 侧栏：加入一层登录页同款的青绿光晕 */
+.app-body .sidebar {
+  background:
+    radial-gradient(460px 320px at 18% -4%, rgba(120, 255, 235, 0.2), transparent 62%),
+    radial-gradient(360px 440px at 112% 44%, rgba(37, 185, 167, 0.16), transparent 66%),
+    linear-gradient(168deg, #052d31 0%, #075552 56%, #062a31 100%);
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 深色主题：把水光换成夜间水域 */
+[data-theme="dark"] .app-body {
+  background:
+    radial-gradient(1100px 620px at 10% -10%, rgba(49, 196, 179, 0.16), transparent 62%),
+    radial-gradient(1000px 560px at 96% 2%, rgba(78, 111, 220, 0.14), transparent 60%),
+    radial-gradient(900px 620px at 50% 112%, rgba(17, 160, 148, 0.18), transparent 64%),
+    linear-gradient(168deg, #06171c 0%, #062127 52%, #041216 100%);
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] .aqua-glow-a { background: radial-gradient(closest-side, rgba(49, 196, 179, 0.2), transparent 70%); }
+[data-theme="dark"] .aqua-glow-b { background: radial-gradient(closest-side, rgba(78, 111, 220, 0.17), transparent 70%); }
+[data-theme="dark"] .wave-a { fill: rgba(49, 196, 179, 0.07); }
+[data-theme="dark"] .wave-b { fill: rgba(49, 196, 179, 0.09); }
+[data-theme="dark"] .wave-c { fill: rgba(2, 12, 15, 0.35); }
+[data-theme="dark"] .wave-line { stroke: rgba(70, 216, 197, 0.2); }
+[data-theme="dark"] .aqua-bubbles span {
+  border-color: rgba(70, 216, 197, 0.24);
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.5), rgba(49, 196, 179, 0.16) 62%, transparent 72%);
+}
+
+[data-theme="dark"] .topbar {
+  background:
+    radial-gradient(560px 120px at 18% -30%, rgba(120, 255, 235, 0.1), transparent 70%),
+    linear-gradient(118deg, rgba(3, 22, 26, 0.97) 0%, rgba(5, 45, 49, 0.95) 52%, rgba(4, 28, 33, 0.96) 100%);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .card {
+  background: linear-gradient(180deg, rgba(12, 36, 42, 0.94) 0%, rgba(9, 30, 35, 0.9) 100%);
+  border-color: rgba(38, 78, 86, 0.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 2px 3px rgba(0, 0, 0, 0.16),
+    0 24px 46px -34px rgba(0, 0, 0, 0.75);
+}
+
+/* --------------------------------------------------------------------------
    响应式
    -------------------------------------------------------------------------- */
 
