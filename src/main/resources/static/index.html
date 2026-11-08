@@ -6,7 +6,7 @@
   <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统 · 溶氧实时监控、增氧策略、分时电价与告警中心">
   <title>AquaGuard · 鱼塘溶氧后台管理系统</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/app.css?v=20261105-3">
+  <link rel="stylesheet" href="assets/app.css?v=20261108-2">
 </head>
 <body class="app-body">
   <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -147,6 +147,10 @@
       <path d="M11 3.5 12.9 9l5.6 1.9-5.6 1.9L11 18.4 9.1 12.8 3.5 10.9 9.1 9 11 3.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
       <path d="m18.5 15.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" fill="currentColor"/>
     </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24">
+      <circle cx="10.8" cy="10.8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <path d="m15.6 15.6 4.4 4.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
   </svg>
 
   <div class="aqua-backdrop" aria-hidden="true">
@@ -267,6 +271,9 @@
           <button class="icon-btn logout-btn" id="logoutBtn" type="button" aria-label="退出登录" title="退出登录">
             <svg class="icon"><use href="#i-logout"></use></svg>
           </button>
+          <button class="icon-btn command-btn" id="commandBtn" type="button" aria-label="打开命令面板" title="命令面板 · Ctrl+K">
+            <svg class="icon"><use href="#i-search"></use></svg>
+          </button>
           <button class="icon-btn" id="themeBtn" aria-label="切换深浅色主题" title="切换主题">
             <svg class="icon"><use href="#i-moon"></use></svg>
           </button>
@@ -290,10 +297,11 @@
   <div class="toast-root" id="toastRoot" aria-live="polite"></div>
   <div id="modalRoot"></div>
   <div id="assistantRoot"></div>
+  <div id="commandRoot"></div>
 
   <script src="assets/api.js?v=20261105-1"></script>
   <script src="assets/ui.js?v=20261105-1"></script>
-  <script src="assets/chart.js?v=20261105-1"></script>
-  <script src="assets/app.js?v=20261105-2"></script>
+  <script src="assets/chart.js?v=20261108-2"></script>
+  <script src="assets/app.js?v=20261108-3"></script>
 </body>
 </html>

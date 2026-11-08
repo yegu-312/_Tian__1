@@ -44,16 +44,24 @@
       this.data = null;
       this.geom = null;
       this.hover = null;
+      this.selection = null;
+      this.drag = null;
+      this.onRangeSelect = null;
+      this.onRangeClear = null;
       this.showPrediction = true;
       this.showThresholds = true;
       this.w = 0;
       this.h = 0;
 
+      this._onDown = this._onDown.bind(this);
       this._onMove = this._onMove.bind(this);
+      this._onUp = this._onUp.bind(this);
       this._onLeave = this._onLeave.bind(this);
 
+      canvas.addEventListener('pointerdown', this._onDown);
       canvas.addEventListener('pointermove', this._onMove);
-      canvas.addEventListener('pointerdown', this._onMove);
+      canvas.addEventListener('pointerup', this._onUp);
+      canvas.addEventListener('pointercancel', this._onUp);
       canvas.addEventListener('pointerleave', this._onLeave);
 
       if (window.ResizeObserver) {
@@ -69,7 +77,25 @@
       this.data = data;
       this.hover = null;
       this._hideTooltip();
+      if (!data) {
+        this.selection = null;
+        this.drag = null;
+        this._notifyRangeClear();
+      }
       this.draw();
+    }
+
+    clearSelection() {
+      const hadSelection = !!this.selection;
+      this.selection = null;
+      this.drag = null;
+      this._hideTooltip();
+      this.draw();
+      if (hadSelection) this._notifyRangeClear();
+    }
+
+    _notifyRangeClear() {
+      if (typeof this.onRangeClear === 'function') this.onRangeClear(this);
     }
 
     setShowPrediction(show) {
@@ -374,6 +400,35 @@
         ctx.stroke();
       }
 
+      /* 框选区间 */
+      if (this.selection &&
+          Number.isFinite(Number(this.selection.start)) &&
+          Number.isFinite(Number(this.selection.end))) {
+        const start = Math.max(Math.min(this.selection.start, this.selection.end), xMin);
+        const end = Math.min(Math.max(this.selection.start, this.selection.end), xMax);
+        if (end > start) {
+          const x1 = X(start);
+          const x2 = X(end);
+          ctx.save();
+          ctx.fillStyle = cssVar('--chart-selection');
+          ctx.fillRect(x1, padT, x2 - x1, plotH);
+          ctx.strokeStyle = cssVar('--chart-selection-line');
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x1, padT);
+          ctx.lineTo(x1, padT + plotH);
+          ctx.moveTo(x2, padT);
+          ctx.lineTo(x2, padT + plotH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = cssVar('--chart-selection-line');
+          ctx.fillRect(x1 - 1.5, padT, 3, 10);
+          ctx.fillRect(x2 - 1.5, padT, 3, 10);
+          ctx.restore();
+        }
+      }
+
       /* 悬停指示 */
       if (this.hover && this.hover.point) {
         const hp = this.hover.point;
@@ -424,10 +479,59 @@
       return list;
     }
 
+    _offsetFromPx(px) {
+      if (!this.geom) return null;
+      const ratio = clamp((px - this.geom.padL) / this.geom.plotW, 0, 1);
+      return this.geom.xMin + ratio * (this.geom.xMax - this.geom.xMin);
+    }
+
+    _onDown(event) {
+      if (!this.geom) return;
+      if (event.button !== undefined && event.button !== 0) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      if (px < this.geom.padL || px > this.geom.padL + this.geom.plotW ||
+          py < this.geom.padT || py > this.geom.padT + this.geom.plotH) {
+        return;
+      }
+      if (event.pointerType === 'mouse') event.preventDefault();
+
+      this.drag = {
+        pointerId: event.pointerId,
+        startPx: px,
+        lastPx: px,
+        startOffset: this._offsetFromPx(px),
+        moved: false
+      };
+      try { this.canvas.setPointerCapture(event.pointerId); } catch (error) { /* ignore */ }
+      this.hover = null;
+      this._hideTooltip();
+    }
+
     _onMove(event) {
       if (!this.geom) return;
       const rect = this.canvas.getBoundingClientRect();
-      const px = event.clientX - rect.left;
+      let px = event.clientX - rect.left;
+
+      if (this.drag) {
+        if (event.pointerId !== undefined && this.drag.pointerId !== event.pointerId) return;
+        px = clamp(px, this.geom.padL, this.geom.padL + this.geom.plotW);
+        this.drag.lastPx = px;
+        if (Math.abs(px - this.drag.startPx) > 6) {
+          this.drag.moved = true;
+          const endOffset = this._offsetFromPx(px);
+          this.selection = {
+            start: Math.min(this.drag.startOffset, endOffset),
+            end: Math.max(this.drag.startOffset, endOffset)
+          };
+          this.hover = null;
+          this._hideTooltip();
+          this.draw();
+        }
+        return;
+      }
+
       if (px < this.geom.padL || px > this.geom.padL + this.geom.plotW) {
         this._hideTooltip();
         if (this.hover) {
@@ -462,6 +566,22 @@
       this._showTooltip(best, px);
     }
 
+    _onUp(event) {
+      if (!this.drag) return;
+      const drag = this.drag;
+      this.drag = null;
+      try {
+        if (this.canvas.hasPointerCapture && this.canvas.hasPointerCapture(drag.pointerId)) {
+          this.canvas.releasePointerCapture(drag.pointerId);
+        }
+      } catch (error) { /* ignore */ }
+
+      this.draw();
+      if (drag.moved && this.selection && typeof this.onRangeSelect === 'function') {
+        this.onRangeSelect(this.selection, this);
+      }
+    }
+
     _showTooltip(point, px) {
       if (!this.tooltip || !this.geom) return;
       const d = this.data;
@@ -490,6 +610,7 @@
     }
 
     _onLeave() {
+      if (this.drag) return;
       this._hideTooltip();
       if (this.hover) {
         this.hover = null;

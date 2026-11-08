@@ -161,6 +161,8 @@
     doChart = new window.Aqua.DoChart(el('doChart'), el('chartTip'));
     createCompareCharts();
     bindOverview();
+    initChartRanges();
+    initCommandPalette();
     bindClockShortcuts();
 
     document.addEventListener('aqua:theme', function () {
@@ -715,7 +717,7 @@
           comparePanelMarkup('A') +
           comparePanelMarkup('B') +
         '</div>' +
-        '<p class="chart-note">' + icon('info') + '<span>两塘各自独立运行，差值 = 右侧鱼塘 − 左侧鱼塘；可随时在顶部切换当前鱼塘。</span></p>' +
+        '<p class="chart-note">' + icon('info') + '<span>两塘各自独立运行，差值 = 右侧鱼塘 − 左侧鱼塘；可在任一曲线上拖拽框选，让 AI 分析该时段。</span></p>' +
       '</article>' +
 
       '<div class="overview-grid">' +
@@ -751,7 +753,9 @@
             '<span class="lg"><i class="line on"></i>开机阈值</span>' +
             '<span class="lg"><i class="line off"></i>关机阈值</span>' +
             '<span class="lg"><i class="swatch aerator"></i>增氧时段</span>' +
+            '<span class="chart-drag-hint">' + icon('spark') + '拖拽框选 · 问 AI</span>' +
           '</div>' +
+          chartRangeBarMarkup('Main') +
           '<div class="chart-wrap" id="chartWrap">' +
             '<canvas id="doChart" role="img" aria-label="溶氧历史与预测曲线"></canvas>' +
             '<div class="chart-tooltip" id="chartTip"></div>' +
@@ -836,11 +840,24 @@
           '<div><span>水温</span><strong id="compareTemp' + side + '">--</strong></div>' +
           '<div><span>增氧机</span><strong id="compareAir' + side + '">--</strong></div>' +
         '</div>' +
+        chartRangeBarMarkup(side) +
         '<div class="compare-chart-wrap">' +
           '<canvas id="compareChart' + side + '" role="img" aria-label="鱼塘溶氧趋势对比"></canvas>' +
           '<div class="chart-tooltip" id="compareTip' + side + '"></div>' +
           '<div class="chart-empty" id="compareEmpty' + side + '">等待对比数据…</div>' +
         '</div>' +
+      '</div>';
+  }
+
+  function chartRangeBarMarkup(suffix) {
+    return '<div class="chart-range-bar" id="rangeBar' + suffix + '" hidden>' +
+        '<span class="chart-range-label" id="rangeLabel' + suffix + '"></span>' +
+        '<button class="chart-range-ask" type="button" data-range-ask="' + suffix + '">' +
+          icon('spark') + '问 AI' +
+        '</button>' +
+        '<button class="chart-range-clear" type="button" data-range-clear="' + suffix + '" aria-label="取消框选">' +
+          icon('x') +
+        '</button>' +
       '</div>';
   }
 
@@ -948,6 +965,213 @@
         });
       });
     }
+  }
+
+  /* ------------------------------ 图表框选问 AI ------------------------------ */
+
+  function initChartRanges() {
+    bindChartRange(doChart, 'Main', function () { return state.activePondId; });
+    bindChartRange(compareChartA, 'A', function () { return state.activePondId; });
+    bindChartRange(compareChartB, 'B', function () { return state.comparePondId; });
+  }
+
+  function bindChartRange(chart, suffix, pondIdGetter) {
+    if (!chart) return;
+    const bar = el('rangeBar' + suffix);
+    if (!bar) return;
+
+    chart.onRangeSelect = function (selection) {
+      showChartRangeBar(chart, suffix, selection);
+    };
+    chart.onRangeClear = function () {
+      hideChartRangeBar(suffix);
+    };
+
+    const ask = bar.querySelector('[data-range-ask]');
+    if (ask) {
+      ask.addEventListener('click', function () {
+        askAboutChartRange(chart, pondIdGetter());
+      });
+    }
+    const clear = bar.querySelector('[data-range-clear]');
+    if (clear) {
+      clear.addEventListener('click', function () {
+        chart.clearSelection();
+      });
+    }
+  }
+
+  function showChartRangeBar(chart, suffix, selection) {
+    const data = chart && chart.data;
+    const bar = el('rangeBar' + suffix);
+    const label = el('rangeLabel' + suffix);
+    if (!data || !bar || !label || !selection) return;
+
+    const range = chartRangeTimeText(data, selection);
+    if (!range) return;
+    label.textContent = range.label;
+    label.title = '已选择鱼塘时间 ' + range.start + ' 至 ' + range.end + '，可交给 AI 分析';
+    bar.hidden = false;
+  }
+
+  function hideChartRangeBar(suffix) {
+    const bar = el('rangeBar' + suffix);
+    if (bar) bar.hidden = true;
+  }
+
+  function chartRangeTimeText(data, selection) {
+    const now = Number(data.elapsedMinutes) || 0;
+    const startOffset = Math.min(Number(selection.start), Number(selection.end));
+    const endOffset = Math.max(Number(selection.start), Number(selection.end));
+    if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset)) return null;
+
+    const start = fmt.shifted(data.pondTime, startOffset - now, true);
+    const end = fmt.shifted(data.pondTime, endOffset - now, true);
+    if (start === '--' || end === '--') return null;
+
+    const sameDate = start.slice(0, 5) === end.slice(0, 5);
+    const endShort = sameDate ? end.slice(6) : end;
+    return {
+      start: start,
+      end: end,
+      label: start + ' – ' + endShort + ' · ' + fmt.elapsed(endOffset - startOffset)
+    };
+  }
+
+  function askAboutChartRange(chart, pondId) {
+    const analysis = buildChartRangeAnalysis(chart, pondId);
+    if (!analysis) {
+      ui.toast('框选范围内没有采样点，请重新框选', 'warn');
+      return;
+    }
+    openAssistant();
+    sendAssistantMessage(analysis.question, analysis.pondId);
+  }
+
+  function buildChartRangeAnalysis(chart, pondId) {
+    const data = chart && chart.data;
+    const selection = chart && chart.selection;
+    if (!data || !selection) return null;
+
+    const now = Number(data.elapsedMinutes) || 0;
+    const startOffset = Math.min(Number(selection.start), Number(selection.end));
+    const endOffset = Math.max(Number(selection.start), Number(selection.end));
+    if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset)) return null;
+
+    const points = [];
+    (data.history || []).forEach(function (point) {
+      const offset = Number(point.minuteOffset);
+      const value = Number(point.doValue);
+      if (!Number.isFinite(offset) || !Number.isFinite(value)) return;
+      if (offset < startOffset || offset > endOffset) return;
+      points.push({
+        minuteOffset: offset,
+        doValue: value,
+        temperature: Number(point.temperature),
+        aeratorOn: !!point.aeratorOn
+      });
+    });
+    if (Number.isFinite(Number(data.currentDo)) && Number.isFinite(now) &&
+        now >= startOffset && now <= endOffset) {
+      const duplicate = points.some(function (point) { return Math.abs(point.minuteOffset - now) < 0.01; });
+      if (!duplicate) {
+        points.push({
+          minuteOffset: now,
+          doValue: Number(data.currentDo),
+          temperature: Number(data.temperature),
+          aeratorOn: !!data.aeratorOn
+        });
+      }
+    }
+    points.sort(function (a, b) { return a.minuteOffset - b.minuteOffset; });
+    if (!points.length) return null;
+
+    const timeAt = function (offset) {
+      return fmt.shifted(data.pondTime, offset - now, true);
+    };
+    const first = points[0];
+    const last = points[points.length - 1];
+    let minPoint = first;
+    let maxPoint = first;
+    points.forEach(function (point) {
+      if (point.doValue < minPoint.doValue) minPoint = point;
+      if (point.doValue > maxPoint.doValue) maxPoint = point;
+    });
+
+    const delta = last.doValue - first.doValue;
+    const trend = delta > 0.05 ? '上升' : delta < -0.05 ? '下降' : '基本平稳';
+    const temps = points
+      .map(function (point) { return point.temperature; })
+      .filter(function (value) { return Number.isFinite(value); });
+
+    const runs = [];
+    let currentRun = null;
+    points.forEach(function (point) {
+      if (!point.aeratorOn) {
+        if (currentRun) {
+          runs.push(currentRun);
+          currentRun = null;
+        }
+        return;
+      }
+      if (!currentRun) currentRun = { start: point.minuteOffset, end: point.minuteOffset };
+      else currentRun.end = point.minuteOffset;
+    });
+    if (currentRun) runs.push(currentRun);
+
+    let aeratorText = '区间内增氧机全程关闭';
+    if (runs.length) {
+      aeratorText = '区间内增氧机运行 ' + runs.slice(0, 3).map(function (run) {
+        return timeAt(run.start) + '–' + timeAt(run.end);
+      }).join('、');
+      if (runs.length > 3) aeratorText += ' 等 ' + runs.length + ' 段';
+    }
+
+    const thresholds = data.thresholds || {};
+    const thresholdParts = [];
+    if (Number.isFinite(Number(thresholds.safetyFloor))) thresholdParts.push('安全下限 ' + fmt.num(thresholds.safetyFloor) + ' mg/L');
+    if (Number.isFinite(Number(thresholds.onThreshold))) thresholdParts.push('开机 ' + fmt.num(thresholds.onThreshold) + ' mg/L');
+    if (Number.isFinite(Number(thresholds.offThreshold))) thresholdParts.push('关机 ' + fmt.num(thresholds.offThreshold) + ' mg/L');
+
+    let lowOnText = '';
+    if (Number.isFinite(Number(thresholds.onThreshold))) {
+      const lowOn = points.filter(function (point) {
+        return point.doValue < Number(thresholds.onThreshold);
+      }).length;
+      lowOnText = '区间内低于开机阈值的采样点 ' + lowOn + ' 个';
+      if (Number.isFinite(Number(thresholds.safetyFloor))) {
+        const lowFloor = points.filter(function (point) {
+          return point.doValue < Number(thresholds.safetyFloor);
+        }).length;
+        lowOnText += '，低于安全下限 ' + lowFloor + ' 个';
+      }
+      lowOnText += '；';
+    }
+
+    const pond = pondById(pondId);
+    const pondName = pond ? pondLabel(pond) : '当前鱼塘';
+    const range = chartRangeTimeText(data, { start: startOffset, end: endOffset });
+    if (!range) return null;
+    const question = [
+      '请分析我框选的这段溶氧变化：',
+      '鱼塘：「' + pondName + '」（pondId=' + (pondId == null ? '未知' : pondId) + '），鱼塘时间 ' +
+        range.start + ' 至 ' + range.end + '。',
+      '区间摘要（来自图表当前已加载的 ' + points.length + ' 个采样点）：',
+      '溶氧起点 ' + fmt.num(first.doValue) + '，终点 ' + fmt.num(last.doValue) +
+        '，最低 ' + fmt.num(minPoint.doValue) + '（' + timeAt(minPoint.minuteOffset) + '）' +
+        '，最高 ' + fmt.num(maxPoint.doValue) + '（' + timeAt(maxPoint.minuteOffset) + '）' +
+        '，整体' + trend + ' ' + (delta >= 0 ? '+' : '') + fmt.num(delta) + ' mg/L；',
+      temps.length
+        ? '水温 ' + fmt.num(Math.min.apply(null, temps), 1) + '–' + fmt.num(Math.max.apply(null, temps), 1) + ' ℃；'
+        : '',
+      aeratorText + '；',
+      thresholdParts.length ? '当前阈值：' + thresholdParts.join('、') + '；' : '',
+      lowOnText,
+      '请说明：1) 主要变化与可能原因；2) 是否存在风险；3) 给出可执行建议。' +
+        '请以这份摘要和工具查询结果为准，不要编造未提供的数值。'
+    ].join('');
+
+    return { question: question, pondId: pondId, start: startOffset, end: endOffset };
   }
 
   function updateOverview(data) {
@@ -3238,6 +3462,324 @@
 
   /* ------------------------------ AI 助手 ------------------------------ */
 
+  /* ------------------------------ 命令面板 ------------------------------ */
+
+  const ROUTE_ICONS = {
+    overview: 'gauge',
+    clock: 'clock',
+    pond: 'sliders',
+    aerator: 'fan',
+    ponds: 'waves',
+    electricity: 'bolt',
+    alerts: 'bell',
+    logs: 'list',
+    settings: 'settings'
+  };
+
+  const commandPalette = {
+    open: false,
+    items: [],
+    active: 0,
+    lastFocus: null
+  };
+
+  function initCommandPalette() {
+    const root = el('commandRoot');
+    if (!root) return;
+
+    root.innerHTML =
+      '<div class="command-layer" id="commandLayer" hidden>' +
+        '<div class="command-backdrop" data-command-close></div>' +
+        '<div class="command-dialog" role="dialog" aria-modal="true" aria-label="命令面板">' +
+          '<div class="command-search">' +
+            icon('search') +
+            '<input id="commandInput" type="text" autocomplete="off" spellcheck="false" ' +
+              'placeholder="搜索页面、鱼塘、问题或操作…" aria-label="搜索命令" ' +
+              'aria-controls="commandList" aria-autocomplete="list">' +
+            '<kbd>Esc</kbd>' +
+          '</div>' +
+          '<div class="command-list" id="commandList" role="listbox" aria-label="命令列表"></div>' +
+          '<div class="command-foot">' +
+            '<span>↑↓ 选择</span><span>Enter 执行</span><span>Ctrl + K 关闭</span>' +
+            '<span class="command-count" id="commandCount"></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const input = el('commandInput');
+    const layer = el('commandLayer');
+    if (!input || !layer) return;
+
+    input.addEventListener('input', function () {
+      commandPalette.active = 0;
+      renderCommands(input.value);
+    });
+    input.addEventListener('keydown', function (event) {
+      if (event.isComposing) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        moveCommandActive(1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveCommandActive(-1);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setCommandActive(0);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setCommandActive(commandPalette.items.length - 1);
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        executeCommand(commandPalette.active);
+      }
+    });
+    layer.addEventListener('click', function (event) {
+      if (event.target.closest('[data-command-close]')) closeCommandPalette();
+    });
+
+    const trigger = el('commandBtn');
+    if (trigger) trigger.addEventListener('click', openCommandPalette);
+
+    document.addEventListener('keydown', function (event) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey &&
+          String(event.key).toLowerCase() === 'k') {
+        event.preventDefault();
+        if (commandPalette.open) closeCommandPalette();
+        else openCommandPalette();
+        return;
+      }
+      if (commandPalette.open && event.key === 'Escape') {
+        event.preventDefault();
+        closeCommandPalette();
+      }
+    });
+  }
+
+  function openCommandPalette() {
+    const layer = el('commandLayer');
+    const input = el('commandInput');
+    if (!layer || !input) return;
+    commandPalette.open = true;
+    commandPalette.active = 0;
+    commandPalette.lastFocus = document.activeElement;
+    layer.hidden = false;
+    input.value = '';
+    renderCommands('');
+    setTimeout(function () { input.focus(); }, 20);
+  }
+
+  function closeCommandPalette() {
+    const layer = el('commandLayer');
+    if (layer) layer.hidden = true;
+    commandPalette.open = false;
+    if (commandPalette.lastFocus && typeof commandPalette.lastFocus.focus === 'function') {
+      try { commandPalette.lastFocus.focus(); } catch (error) { /* ignore */ }
+    }
+    commandPalette.lastFocus = null;
+  }
+
+  function commandPaletteModel(query) {
+    const raw = String(query || '').trim();
+    const normalized = raw.toLowerCase();
+    const items = [];
+
+    Object.keys(ROUTES).forEach(function (route) {
+      const meta = ROUTES[route];
+      items.push({
+        group: '页面',
+        label: meta.label,
+        hint: meta.title,
+        icon: ROUTE_ICONS[route] || 'gauge',
+        keywords: route + ' ' + meta.title + ' ' + meta.sub + ' 页面 跳转 打开',
+        run: function () {
+          if (routeFromHash() !== route) window.location.hash = '#/' + route;
+        }
+      });
+    });
+
+    state.ponds.forEach(function (pond) {
+      const isActive = Number(pond.id) === Number(state.activePondId);
+      items.push({
+        group: '鱼塘',
+        label: '切换到「' + pondLabel(pond) + '」',
+        hint: isActive ? '当前鱼塘' : '设为当前操作鱼塘',
+        icon: 'waves',
+        keywords: 'pond 鱼塘 切换 ' + pondLabel(pond),
+        run: function () { selectPond(pond.id); }
+      });
+    });
+
+    const paused = !!(state.realtime && state.realtime.paused);
+    items.push({
+      group: '操作',
+      label: paused ? '继续仿真' : '暂停仿真',
+      hint: '鱼塘时钟控制，会记录到操作日志',
+      tag: '需确认',
+      icon: paused ? 'play' : 'pause',
+      keywords: 'pause resume clock simulation 暂停 继续 时钟 仿真',
+      run: function () {
+        ui.confirm({
+          title: paused ? '继续仿真？' : '暂停仿真？',
+          message: paused
+            ? '鱼塘时间将继续按当前倍速推进。\n此操作会写入系统日志。'
+            : '鱼塘时间将停止推进，增氧策略保持当前状态。\n此操作会写入系统日志。',
+          confirmText: paused ? '确认继续' : '确认暂停'
+        }).then(function (confirmed) {
+          if (confirmed) togglePause();
+        });
+      }
+    });
+    items.push({
+      group: '操作',
+      label: '刷新当前数据',
+      hint: '立即拉取实时数据、对比和最近的告警',
+      icon: 'refresh',
+      keywords: 'refresh reload 刷新 更新 数据',
+      run: function () {
+        pollRealtime();
+        if (state.route === 'overview') pollCompare();
+        loadOverviewExtras();
+        ui.toast('正在刷新数据…', 'info');
+      }
+    });
+    items.push({
+      group: '操作',
+      label: '切换深浅色主题',
+      hint: '立即切换并记住偏好',
+      icon: 'moon',
+      keywords: 'theme dark light 主题 深色 浅色 夜间',
+      run: function () { ui.toggleTheme(); }
+    });
+    items.push({
+      group: '操作',
+      label: '打开 AI 助手',
+      hint: '打开右下角对话窗口',
+      icon: 'spark',
+      keywords: 'assistant ai chat 助手 对话',
+      run: function () { openAssistant(); }
+    });
+
+    const asks = [
+      { label: '当前鱼塘现在安全吗？', hint: '让 AI 结合阈值和实时数据判断', question: '当前鱼塘现在安全吗？请结合实时溶氧、阈值和增氧机状态说明。' },
+      { label: '哪口塘最危险？', hint: '让 AI 对比所有鱼塘的溶氧风险', question: '现在哪口塘最危险？请对比各塘数据并说明判断依据。' },
+      { label: '解释最近的告警', hint: '让 AI 结合告警和增氧记录分析', question: '解释最近的告警，说明原因和应该怎么处理。' },
+      { label: '现在现实时间是多少？', hint: '查询服务器所在现实世界的时间', question: '现在现实中几点了？' },
+      { label: '让 AI 准备开启增氧机', hint: '会先生成待确认操作，确认后才执行', tag: '需确认', question: '请把当前鱼塘的增氧机切换为手动并开启。' },
+      { label: '让 AI 准备关闭增氧机', hint: '会先生成待确认操作，确认后才执行', tag: '需确认', question: '请把当前鱼塘的增氧机切换为手动并关闭。' }
+    ];
+    asks.forEach(function (ask) {
+      items.push({
+        group: '问 AI',
+        label: ask.label,
+        hint: ask.hint,
+        tag: ask.tag,
+        icon: 'spark',
+        keywords: 'ask ai 问 助手 ' + ask.label,
+        run: function () {
+          openAssistant();
+          sendAssistantMessage(ask.question);
+        }
+      });
+    });
+
+    if (raw) {
+      const question = raw.replace(/^(问|ask ai|ai)\s*[:：]?\s*/i, '').slice(0, 2000);
+      items.push({
+        group: '问 AI',
+        label: '问 AI：' + question,
+        hint: '把这句话交给鱼塘助手',
+        icon: 'spark',
+        keywords: '',
+        run: function () {
+          openAssistant();
+          sendAssistantMessage(question);
+        }
+      });
+    }
+
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+    return items.filter(function (item) {
+      if (!tokens.length) return true;
+      const haystack = (item.label + ' ' + (item.hint || '') + ' ' + (item.keywords || '')).toLowerCase();
+      return tokens.every(function (token) { return haystack.indexOf(token) >= 0; });
+    });
+  }
+
+  function renderCommands(query) {
+    const list = el('commandList');
+    if (!list) return;
+    const items = commandPaletteModel(query);
+    commandPalette.items = items;
+    if (commandPalette.active >= items.length) commandPalette.active = Math.max(0, items.length - 1);
+
+    list.textContent = '';
+    let lastGroup = null;
+    items.forEach(function (item, index) {
+      if (item.group !== lastGroup) {
+        lastGroup = item.group;
+        const heading = document.createElement('p');
+        heading.className = 'command-group';
+        heading.textContent = item.group;
+        list.appendChild(heading);
+      }
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'command-item';
+      button.id = 'commandItem' + index;
+      button.dataset.commandIndex = String(index);
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', 'false');
+      button.innerHTML = icon(item.icon) +
+        '<span class="command-item-main"><strong></strong><span></span></span>' +
+        (item.tag ? '<span class="command-tag"></span>' : '');
+      button.querySelector('strong').textContent = item.label;
+      const hintNode = button.querySelector('.command-item-main > span');
+      if (hintNode) hintNode.textContent = item.hint || '';
+      if (item.tag) button.querySelector('.command-tag').textContent = item.tag;
+
+      button.addEventListener('click', function () { executeCommand(index); });
+      button.addEventListener('mouseenter', function () { setCommandActive(index); });
+      list.appendChild(button);
+    });
+
+    const count = el('commandCount');
+    if (count) count.textContent = items.length + ' 项';
+    setCommandActive(commandPalette.active);
+  }
+
+  function setCommandActive(index) {
+    const list = el('commandList');
+    const input = el('commandInput');
+    if (!list || !commandPalette.items.length) return;
+    const next = Math.max(0, Math.min(index, commandPalette.items.length - 1));
+    commandPalette.active = next;
+    list.querySelectorAll('.command-item').forEach(function (node, nodeIndex) {
+      const active = nodeIndex === next;
+      node.classList.toggle('active', active);
+      node.setAttribute('aria-selected', String(active));
+      if (active && node.scrollIntoView) node.scrollIntoView({ block: 'nearest' });
+    });
+    if (input) input.setAttribute('aria-activedescendant', 'commandItem' + next);
+  }
+
+  function moveCommandActive(delta) {
+    if (!commandPalette.items.length) return;
+    const next = (commandPalette.active + delta + commandPalette.items.length) % commandPalette.items.length;
+    setCommandActive(next);
+  }
+
+  function executeCommand(index) {
+    const item = commandPalette.items[index];
+    if (!item) return;
+    closeCommandPalette();
+    try {
+      item.run();
+    } catch (error) {
+      ui.toast('命令执行失败，请重试', 'error');
+    }
+  }
+
   const WRITE_TOOLS = {
     set_manual_aerator: true,
     update_aerator_strategy: true,
@@ -3535,7 +4077,7 @@
     scrollAssistant();
   }
 
-  async function sendAssistantMessage(raw) {
+  async function sendAssistantMessage(raw, pondId) {
     const text = String(raw == null ? '' : raw).trim();
     if (!text) return;
     if (assistant.busy) {
@@ -3556,8 +4098,9 @@
     autosizeAssistantInput();
     appendAssistantUserMessage(text);
     const turn = beginAssistantTurn();
+    const contextPondId = pondId == null ? state.activePondId : pondId;
     await runAssistantStream(function (signal, handlers) {
-      return api.agent.chat(text, state.activePondId, handlers, signal);
+      return api.agent.chat(text, contextPondId, handlers, signal);
     }, turn);
   }
 
