@@ -44,6 +44,7 @@
   --chart-floor: #df5252;
   --chart-on: #dd9a2e;
   --chart-off: #2a9f70;
+  --chart-temperature: #d9772e;
   --chart-now: #103a41;
   --chart-selection: rgba(37, 185, 167, 0.16);
   --chart-selection-line: rgba(11, 139, 128, 0.58);
@@ -91,6 +92,7 @@
   --chart-floor: #f47171;
   --chart-on: #f1b85a;
   --chart-off: #4dd696;
+  --chart-temperature: #f2a35e;
   --chart-now: #d8ecee;
   --chart-selection: rgba(49, 196, 179, 0.15);
   --chart-selection-line: rgba(70, 216, 197, 0.62);
@@ -220,6 +222,8 @@ button { cursor: pointer; }
 .pond-chip > div { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .pond-chip strong { font-size: 12.5px; color: #eafafa; font-weight: 650; }
 .pond-chip span:last-child { font-size: 10.5px; color: #7fa4ab; }
+
+.sidebar-pond-switch { display: none; }
 
 .pond-pulse {
   width: 8px;
@@ -496,7 +500,7 @@ button { cursor: pointer; }
   width: 100%;
   max-width: 1520px;
   margin: 0 auto;
-  padding: 26px 28px 48px;
+  padding: 26px 28px 92px;
   flex: 1;
 }
 
@@ -931,6 +935,21 @@ textarea.input { height: auto; min-height: 90px; padding: 10px 11px; resize: ver
 }
 .metric-foot .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.metric-extra {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.metric-extra span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .do-meter {
   position: relative;
   height: 7px;
@@ -1000,6 +1019,7 @@ textarea.input { height: auto; min-height: 90px; padding: 10px 11px; resize: ver
 .lg .line.floor { background: var(--chart-floor); height: 1.5px; }
 .lg .line.on { background: var(--chart-on); height: 1.5px; }
 .lg .line.off { background: var(--chart-off); height: 1.5px; }
+.lg .line.temperature { background: repeating-linear-gradient(90deg, var(--chart-temperature) 0 4px, transparent 4px 7px); }
 .lg .swatch { display: inline-block; width: 12px; height: 10px; border-radius: 3px; background: var(--aerator-band); border: 1px solid color-mix(in srgb, var(--chart-history) 22%, transparent); }
 
 .chart-wrap {
@@ -2108,7 +2128,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .main { margin-left: 0; }
   .menu-btn { display: inline-grid; }
   .topbar { padding: 10px 18px; }
-  .pages { padding: 20px 18px 42px; }
+  .pages { padding: 20px 18px 92px; }
   .operator-field { display: none; }
   .user-chip { max-width: none; padding-right: 5px; }
   .user-meta { display: none; }
@@ -2134,7 +2154,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 520px) {
   .metrics { grid-template-columns: 1fr; }
-  .pages { padding: 16px 13px 36px; }
+  .pages { padding: 16px 13px calc(96px + env(safe-area-inset-bottom)); }
   .topbar { padding: 9px 13px; gap: 10px; }
   .user-chip { display: none; }
   .card { padding: 16px; border-radius: 16px; }
@@ -2146,6 +2166,39 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .clock-meta { gap: 8px; }
   .toast-root { top: 10px; right: 10px; left: 10px; max-width: none; }
   .toast { width: 100%; }
+
+  /* 手机端：保留鱼塘切换入口，放大触控目标与表单控件 */
+  .sidebar-pond-switch {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: -8px 4px 14px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.055);
+  }
+  .sidebar-pond-switch > span {
+    color: #7fa4ab;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+  }
+  .sidebar-pond-switch .pond-select {
+    width: 100%;
+    max-width: none;
+    padding: 3px 0;
+    color: #eafafa;
+    font-size: 13.5px;
+  }
+  .nav-item { padding: 12px; font-size: 14px; }
+  .topbar .icon-btn { width: 38px; height: 38px; }
+  .filters .field { flex: 1 1 calc(50% - 6px); min-width: 0; }
+  .filters .field .input { height: 40px; font-size: 14px; }
+  .input, select.input { font-size: 14px; }
+  .table-wrap { -webkit-overflow-scrolling: touch; }
+  .sidebar { padding-bottom: env(safe-area-inset-bottom); }
+  .assistant-fab { right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .assistant-panel { padding-bottom: env(safe-area-inset-bottom); }
 }
 
 /* ==========================================================================

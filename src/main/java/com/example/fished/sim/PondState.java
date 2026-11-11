@@ -17,6 +17,9 @@ public class PondState {
     private long elapsedMinutes;
     private boolean safetyAlertActive;
     private boolean thresholdAlertActive;
+    /** 水温辅助告警的进行中标记；不影响增氧决策。 */
+    private boolean temperatureHighAlertActive;
+    private boolean temperatureLowAlertActive;
 
     public PondState(LocalDateTime pondTime,double doValue, double temperature){
         reset(pondTime,doValue,temperature);
@@ -35,6 +38,8 @@ public class PondState {
         this.elapsedMinutes = 0L;
         this.thresholdAlertActive = false;
         this.safetyAlertActive = false;
+        this.temperatureHighAlertActive = false;
+        this.temperatureLowAlertActive = false;
         this.aeratorOn = false;
     }
 }

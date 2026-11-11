@@ -36,7 +36,8 @@
   }
 
   class DoChart {
-    constructor(canvas, tooltipEl) {
+    constructor(canvas, tooltipEl, options) {
+      const opts = options || {};
       this.canvas = canvas;
       this.ctx = canvas.getContext('2d');
       this.tooltip = tooltipEl;
@@ -50,6 +51,7 @@
       this.onRangeClear = null;
       this.showPrediction = true;
       this.showThresholds = true;
+      this.showTemperature = opts.showTemperature !== false;
       this.w = 0;
       this.h = 0;
 
@@ -105,6 +107,11 @@
 
     setShowThresholds(show) {
       this.showThresholds = !!show;
+      this.draw();
+    }
+
+    setShowTemperature(show) {
+      this.showTemperature = !!show;
       this.draw();
     }
 
@@ -199,8 +206,30 @@
       const X = minuteOffset => padL + ((minuteOffset - xMin) / (xMax - xMin)) * plotW;
       const Y = value => padT + ((yMax - value) / (yMax - yMin)) * plotH;
 
+      /* 水温辅助曲线的独立量程（只画历史 + 当前，不延伸到预测段） */
+      const tempValues = [];
+      if (this.showTemperature) {
+        history.forEach(p => {
+          const value = Number(p.temperature);
+          if (Number.isFinite(value)) tempValues.push(value);
+        });
+        const currentTemp = Number(d.temperature);
+        if (Number.isFinite(currentTemp)) tempValues.push(currentTemp);
+      }
+      let tempMin = 0;
+      let tempMax = 0;
+      if (tempValues.length) {
+        tempMin = Math.min.apply(null, tempValues);
+        tempMax = Math.max.apply(null, tempValues);
+        const tempSpan = Math.max(1, tempMax - tempMin);
+        tempMin -= tempSpan * 0.18;
+        tempMax += tempSpan * 0.18;
+      }
+      const YT = value => padT + ((tempMax - value) / (tempMax - tempMin)) * plotH;
+
       this.geom = {
-        padL, padR, padT, padB, plotW, plotH, xMin, xMax, yMin, yMax, X, Y, now
+        padL, padR, padT, padB, plotW, plotH, xMin, xMax, yMin, yMax,
+        tempMin, tempMax, X, Y, YT, now
       };
 
       /* 增氧时段底色 */
@@ -235,6 +264,19 @@
         ctx.stroke();
         ctx.fillStyle = cssVar('--chart-axis');
         ctx.fillText(Number(v).toFixed(decimals), padL - 9, y);
+      }
+
+      /* 右侧水温刻度：辅助指标，使用独立量程 */
+      if (this.showTemperature && tempValues.length) {
+        ctx.save();
+        ctx.font = '600 9.5px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.fillStyle = cssVar('--chart-temperature');
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        [tempMax, (tempMax + tempMin) / 2, tempMin].forEach(value => {
+          ctx.fillText(FMT.num(value, 1) + '℃', w - 7, YT(value));
+        });
+        ctx.restore();
       }
 
       /* X 轴时间刻度 */
@@ -280,10 +322,49 @@
 
           ctx.fillStyle = color;
           ctx.font = '700 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
-          ctx.textAlign = 'right';
+          ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(FMT.num(value, 2), w - 7, y);
+          ctx.fillText(FMT.num(value, 2), padL + 6, y);
         });
+      }
+
+      /* 水温辅助曲线（虚线、独立右轴；不参与溶氧阈值判断） */
+      if (this.showTemperature && tempValues.length) {
+        const tempPoints = [];
+        history.forEach(p => {
+          const value = Number(p.temperature);
+          if (Number.isFinite(value)) {
+            tempPoints.push({ offset: p.minuteOffset, value: value });
+          }
+        });
+        const currentTemp = Number(d.temperature);
+        if (Number.isFinite(currentTemp)) {
+          tempPoints.push({ offset: now, value: currentTemp });
+        }
+        if (tempPoints.length) {
+          ctx.save();
+          ctx.strokeStyle = cssVar('--chart-temperature');
+          ctx.lineWidth = 1.35;
+          ctx.setLineDash([3, 4]);
+          ctx.globalAlpha = 0.9;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          tempPoints.forEach((p, index) => {
+            const x = X(p.offset);
+            const y = YT(p.value);
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+          const last = tempPoints[tempPoints.length - 1];
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(X(last.offset), YT(last.value), 2.6, 0, Math.PI * 2);
+          ctx.fillStyle = cssVar('--chart-temperature');
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
       /* 历史曲线与面积 */

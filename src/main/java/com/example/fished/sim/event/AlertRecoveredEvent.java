@@ -5,6 +5,6 @@ import java.time.LocalDateTime;
 
 public record AlertRecoveredEvent(
         long pondId,
-        LocalDateTime pondTime, AlertTypeEnum alertType,double doValue
+        LocalDateTime pondTime, AlertTypeEnum alertType, Double value
         ) implements SimEvent {
 }

@@ -20,6 +20,10 @@ public class RealtimeVO {
     private List<DoPoint> prediction;
 
     private Thresholds thresholds;//三条阈值线
+
+    /** 水温辅助检测状态；不参与增氧决策。 */
+    private TemperatureStatusVO temperatureStatus;
+
     // 定义不可变数据类：三个阈值
     public record Thresholds(double safetyFloor,double onThreshold,double offThreshold){
 

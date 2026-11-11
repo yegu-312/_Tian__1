@@ -9,6 +9,7 @@ import com.example.fished.sim.SimulationEngine;
 import com.example.fished.sim.StrategyParams;
 import com.example.fished.vo.PondRealtimeVO;
 import com.example.fished.vo.RealtimeVO;
+import com.example.fished.vo.TemperatureStatusVO;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -75,13 +76,15 @@ public class MonitorController {
         int minutes=Math.max(0,Math.min(predictMinutes,MAX_PREDICT_MINUTES));
         int limit=Math.max(1,Math.min(historyLimit,2000));
         StrategyParams params = engine.getStrategyParams();
+        PondSnapshot snapshot = engine.getSnapshot();
 
         RealtimeVO vo = new RealtimeVO();
-        vo.setCurrentDo(engine.getSnapshot());//当前状态
+        vo.setCurrentDo(snapshot);//当前状态
         vo.setHistory(engine.getHistory(limit)); //最近 limit个历史数据（从旧到新）
         vo.setPrediction(engine.predict(minutes));//未来 minutes 分钟的预测曲线
         vo.setThresholds(new RealtimeVO.Thresholds(params.safetyFloor(),
                 params.onThreshold(),params.offThreshold()));//三条阈值参考线
+        vo.setTemperatureStatus(TemperatureStatusVO.from(snapshot.temperature()));//水温辅助检测状态
         return vo;
     }
 

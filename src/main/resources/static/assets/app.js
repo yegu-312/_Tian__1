@@ -48,7 +48,8 @@
       historyLimit: 120,
       predictMinutes: 30,
       showPrediction: true,
-      showThresholds: true
+      showThresholds: true,
+      showTemperature: true
     },
     alerts: { page: 1, size: 10, level: '', status: '', alertType: '', pondId: '' },
     logs: {
@@ -158,7 +159,7 @@
     bindShell();
     initAssistant();
     buildOverview();
-    doChart = new window.Aqua.DoChart(el('doChart'), el('chartTip'));
+    doChart = new window.Aqua.DoChart(el('doChart'), el('chartTip'), { showTemperature: true });
     createCompareCharts();
     bindOverview();
     initChartRanges();
@@ -257,6 +258,13 @@
         selectPond(Number(pondSelect.value));
       });
     }
+
+    const sidebarPondSelect = el('sidebarPondSelect');
+    if (sidebarPondSelect) {
+      sidebarPondSelect.addEventListener('change', function () {
+        selectPond(Number(sidebarPondSelect.value));
+      });
+    }
   }
 
   /* ------------------------------- 鱼塘切换 ------------------------------- */
@@ -314,15 +322,22 @@
   function renderPondControls() {
     const active = pondById(state.activePondId);
 
+    const optionsHtml = state.ponds.length
+      ? state.ponds.map(function (pond) {
+          return option(pond.id, pondLabel(pond), Number(pond.id) === Number(state.activePondId));
+        }).join('')
+      : '<option value="">暂无鱼塘</option>';
     const select = el('pondSelect');
     if (select) {
-      select.innerHTML = state.ponds.length
-        ? state.ponds.map(function (pond) {
-            return option(pond.id, pondLabel(pond), Number(pond.id) === Number(state.activePondId));
-          }).join('')
-        : '<option value="">暂无鱼塘</option>';
+      select.innerHTML = optionsHtml;
       select.disabled = state.ponds.length < 2;
       select.title = state.ponds.length < 2 ? '当前只有一个鱼塘，可在鱼塘管理中新增' : '切换当前鱼塘';
+    }
+    const sidebarSelect = el('sidebarPondSelect');
+    if (sidebarSelect) {
+      sidebarSelect.innerHTML = optionsHtml;
+      sidebarSelect.disabled = state.ponds.length < 2;
+      sidebarSelect.title = select ? select.title : '切换当前鱼塘';
     }
 
     setText('sidebarPondName', pondLabel(active));
@@ -415,8 +430,8 @@
     const canvasA = el('compareChartA');
     const canvasB = el('compareChartB');
     if (!canvasA || !canvasB) return;
-    compareChartA = new window.Aqua.DoChart(canvasA, el('compareTipA'));
-    compareChartB = new window.Aqua.DoChart(canvasB, el('compareTipB'));
+    compareChartA = new window.Aqua.DoChart(canvasA, el('compareTipA'), { showTemperature: false });
+    compareChartB = new window.Aqua.DoChart(canvasB, el('compareTipB'), { showTemperature: false });
     updateCompareSelector();
   }
 
@@ -687,9 +702,10 @@
           '</div>' +
         '</article>' +
         '<article class="metric-card" data-tone="amber">' +
-          '<div class="metric-head"><span>水体温度</span><span class="metric-ico">' + icon('thermometer') + '</span></div>' +
+          '<div class="metric-head"><span>辅助水温</span><span class="metric-ico">' + icon('thermometer') + '</span></div>' +
           '<div class="metric-value"><span id="mTempValue">--</span><small>℃</small></div>' +
-          '<div class="metric-foot"><span class="badge neutral" id="mTempMode">--</span><span class="muted" id="mSaturation">饱和溶氧 --</span></div>' +
+          '<div class="metric-foot"><span class="badge neutral" id="mTempStatus">等待数据</span><span class="muted" id="mSaturation">饱和溶氧 --</span></div>' +
+          '<div class="metric-extra"><span id="mTempRange">适宜 18–32 ℃</span><span id="mTempTrend">窗口 --</span></div>' +
         '</article>' +
         '<article class="metric-card" data-tone="blue">' +
           '<div class="metric-head"><span>增氧机</span><span class="metric-ico">' + icon('fan') + '</span></div>' +
@@ -744,11 +760,13 @@
               '</label>' +
               '<button class="chip active" id="togglePred" type="button" aria-pressed="true">预测线</button>' +
               '<button class="chip active" id="toggleThr" type="button" aria-pressed="true">阈值线</button>' +
+              '<button class="chip active" id="toggleTemp" type="button" aria-pressed="true">水温线</button>' +
             '</div>' +
           '</div>' +
           '<div class="chart-legend">' +
             '<span class="lg"><i class="line history"></i>历史溶氧</span>' +
             '<span class="lg"><i class="line prediction"></i>预测趋势</span>' +
+            '<span class="lg"><i class="line temperature"></i>水温（辅助）</span>' +
             '<span class="lg"><i class="line floor"></i>安全下限</span>' +
             '<span class="lg"><i class="line on"></i>开机阈值</span>' +
             '<span class="lg"><i class="line off"></i>关机阈值</span>' +
@@ -932,6 +950,16 @@
         if (doChart) doChart.setShowThresholds(state.chart.showThresholds);
         if (compareChartA) compareChartA.setShowThresholds(state.chart.showThresholds);
         if (compareChartB) compareChartB.setShowThresholds(state.chart.showThresholds);
+      });
+    }
+
+    const toggleTemp = el('toggleTemp');
+    if (toggleTemp) {
+      toggleTemp.addEventListener('click', function () {
+        state.chart.showTemperature = !state.chart.showTemperature;
+        toggleTemp.classList.toggle('active', state.chart.showTemperature);
+        toggleTemp.setAttribute('aria-pressed', String(state.chart.showTemperature));
+        if (doChart) doChart.setShowTemperature(state.chart.showTemperature);
       });
     }
 
@@ -1183,10 +1211,7 @@
     setText('mDoRange', '安全下限 ' + fmt.num(thresholds.safetyFloor, 1) + ' mg/L');
     updateDoMeter(data, status);
 
-    setText('mTempValue', fmt.num(data.temperature, 1));
-    setText('mSaturation', '饱和溶氧 ' + fmt.num(fmt.saturationDo(data.temperature), 1) + ' mg/L');
-    const modeDesc = state.pondConfig ? state.pondConfig.temperatureModeDesc : null;
-    setBadge('mTempMode', modeDesc || '水温', 'neutral');
+    updateTemperatureOverview(data);
 
     setText('mAirValue', data.aeratorOn ? '运行中' : '已停止');
     const mode = state.strategy ? state.strategy.mode : null;
@@ -1216,6 +1241,43 @@
     updateQuickClock(data);
     updateQuickAerator(data);
     updatePriceQuick(data.pondTime);
+  }
+
+  function updateTemperatureOverview(data) {
+    const temp = Number(data.temperature);
+    const guard = data.temperatureStatus || {};
+    const comfortMin = Number.isFinite(Number(guard.comfortMin)) ? Number(guard.comfortMin) : 18;
+    const comfortMax = Number.isFinite(Number(guard.comfortMax)) ? Number(guard.comfortMax) : 32;
+
+    setText('mTempValue', fmt.num(data.temperature, 1));
+    setText('mSaturation', '饱和溶氧 ' + fmt.num(fmt.saturationDo(data.temperature), 1) + ' mg/L');
+    setText('mTempRange', '适宜 ' + fmt.num(comfortMin, 0) + '–' + fmt.num(comfortMax, 0) + ' ℃');
+
+    let statusDesc = guard.statusDesc;
+    if (!statusDesc && Number.isFinite(temp)) {
+      statusDesc = temp > comfortMax ? '偏高' : temp < comfortMin ? '偏低' : '适宜';
+    }
+    const tone = statusDesc === '适宜' ? 'good' : (statusDesc === '偏高' || statusDesc === '偏低') ? 'warn' : 'neutral';
+    setBadge('mTempStatus', statusDesc || '等待数据', tone);
+
+    const values = (data.history || [])
+      .map(function (point) { return Number(point.temperature); })
+      .filter(function (value) { return Number.isFinite(value); });
+    if (Number.isFinite(temp)) values.push(temp);
+    if (!values.length) {
+      setText('mTempTrend', '窗口 --');
+      return;
+    }
+
+    const min = Math.min.apply(null, values);
+    const max = Math.max.apply(null, values);
+    let trend = '平稳';
+    if (values.length > 1) {
+      const delta = values[values.length - 1] - values[0];
+      if (delta >= 0.3) trend = '升温';
+      else if (delta <= -0.3) trend = '降温';
+    }
+    setText('mTempTrend', '窗口 ' + fmt.num(min, 1) + '–' + fmt.num(max, 1) + '℃ · ' + trend);
   }
 
   function updateDoMeter(data, status) {
@@ -1320,7 +1382,6 @@
       state.pondConfig = config;
       applyPondIdentity(config);
       if (state.realtime) {
-        setBadge('mTempMode', config.temperatureModeDesc || '水温', 'neutral');
         updatePondInfo();
       }
     } catch (error) {
@@ -1367,11 +1428,13 @@
       }
       container.innerHTML = page.records.map(function (item) {
         const tone = alertTone(item.level);
+        const metric = item.doValue !== null && item.doValue !== undefined
+          ? ' · ' + fmt.num(item.doValue) + ' mg/L' : '';
         return '<a class="mini-item" href="#/alerts">' +
           '<span class="level-dot ' + tone + '"></span>' +
           '<div class="mini-main">' +
             '<strong>' + esc(item.alertTypeDesc || item.alertType) + '</strong>' +
-            '<span>' + esc(item.message || '') + ' · ' + fmt.num(item.doValue) + ' mg/L · ' + fmt.dateTimeShort(item.pondTime) + '</span>' +
+            '<span>' + esc(item.message || '') + metric + ' · ' + fmt.dateTimeShort(item.pondTime) + '</span>' +
           '</div>' +
           '<span class="badge ' + tone + '">' + esc(item.levelDesc || item.level) + '</span>' +
         '</a>';
@@ -1696,9 +1759,6 @@
     setText('topPondEyebrow', 'POND ' + fmt.pad(Number(config.id || state.activePondId)));
     const pond = pondById(config.id || state.activePondId);
     if (pond) pond.pondName = config.pondName;
-    if (state.realtime) {
-      setBadge('mTempMode', config.temperatureModeDesc || '水温', 'neutral');
-    }
   }
 
   function pondTemplate(config) {
@@ -2610,6 +2670,8 @@
             option('', '全部类型', state.alerts.alertType === '') +
             option('do_safety_floor', '溶氧跌破安全下限', state.alerts.alertType === 'do_safety_floor') +
             option('do_on_threshold', '溶氧低于开机阈值', state.alerts.alertType === 'do_on_threshold') +
+            option('temperature_high', '水温高于适宜上限', state.alerts.alertType === 'temperature_high') +
+            option('temperature_low', '水温低于适宜下限', state.alerts.alertType === 'temperature_low') +
           '</select></label>' +
           '<label class="field"><span>每页</span><select class="input" id="alertSize">' +
             option('10', '10 条', state.alerts.size === 10) +
@@ -2690,7 +2752,9 @@
           '<td><span class="badge ' + tone + '">' + esc(item.levelDesc || item.level) + '</span></td>' +
           '<td class="cell-wrap"><span class="cell-strong">' + esc(item.alertTypeDesc || item.alertType) + '</span>' +
             '<span class="cell-sub">' + esc(item.message || '') + '</span></td>' +
-          '<td class="num">' + fmt.num(item.doValue) + '<span class="cell-sub">mg/L</span></td>' +
+          '<td class="num">' + (item.doValue !== null && item.doValue !== undefined
+            ? fmt.num(item.doValue) + '<span class="cell-sub">mg/L</span>'
+            : '<span class="muted">—</span>') + '</td>' +
           '<td class="nowrap">' + fmt.dateTimeShort(item.pondTime) + '</td>' +
           '<td><span class="badge ' + (item.status === 'pending' ? 'warn' : item.status === 'acknowledged' ? 'good' : 'info') + '">' +
             esc(item.statusDesc || item.status) + '</span>' + ackInfo + '</td>' +
@@ -2705,7 +2769,7 @@
 
       wrap.innerHTML = '<div class="table-wrap"><table>' +
         '<thead><tr>' +
-          '<th>鱼塘</th><th>等级</th><th>告警内容</th><th class="num">溶氧</th><th>鱼塘时间</th><th>状态</th><th>记录时间</th><th class="num">操作</th>' +
+          '<th>鱼塘</th><th>等级</th><th>告警内容</th><th class="num">监测值</th><th>鱼塘时间</th><th>状态</th><th>记录时间</th><th class="num">操作</th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 
       wrap.querySelectorAll('[data-ack]').forEach(function (button) {

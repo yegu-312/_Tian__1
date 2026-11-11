@@ -47,9 +47,9 @@ public class SimulationEventListener {
     //打印警告恢复了
     @EventListener
     public void onAlertRecovered(AlertRecoveredEvent event) {
-        log.info("[鱼塘#{}][告警恢复] {} 溶氧回到 {}",
+        log.info("[鱼塘#{}][告警恢复] {} 数值回到 {}",
                 event.pondId(),
                 event.alertType().getDesc(),
-                event.doValue());
+                event.value() == null ? "--" : String.format("%.2f", event.value()));
     }
 }

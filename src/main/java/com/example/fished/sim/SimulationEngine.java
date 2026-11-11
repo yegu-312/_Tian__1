@@ -54,7 +54,7 @@ public class SimulationEngine {
             if (state.isPaused()) {
                 return List.of();
             }
-            List<SimEvent> events = new ArrayList<>(3);
+            List<SimEvent> events = new ArrayList<>(8);
             events.addAll(advance());
             events.addAll(checkAlerts());
             sample();
@@ -105,9 +105,10 @@ public class SimulationEngine {
     }
 
     private List<SimEvent> checkAlerts() {
-    List<SimEvent> events = new ArrayList<>(2);
+    List<SimEvent> events = new ArrayList<>(4);
     LocalDateTime now = state.getPondTime();
     double doValue = state.getDoValue();
+    double temperature = state.getTemperature();
 
     boolean safetyLow = doValue <strategyParams.safetyFloor();
     if (safetyLow && !state.isSafetyAlertActive())
@@ -130,6 +131,30 @@ public class SimulationEngine {
         state.setThresholdAlertActive(false);
         events.add(new AlertRecoveredEvent(pondId, now,
                 AlertTypeEnum.DO_ON_THRESHOLD, doValue));
+    }
+
+    /*
+     * 水温只做辅助检测：不改变增氧机决策，只在越出适宜区间时产生告警。
+     * 使用回差避免温度在阈值附近抖动时反复产生告警。
+     */
+    if (TemperatureGuard.isHigh(temperature) && !state.isTemperatureHighAlertActive()) {
+        state.setTemperatureHighAlertActive(true);
+        events.add(AlertRaisedEvent.temperatureHigh(pondId, now, temperature));
+    } else if (state.isTemperatureHighAlertActive()
+            && TemperatureGuard.highRecovered(temperature)) {
+        state.setTemperatureHighAlertActive(false);
+        events.add(new AlertRecoveredEvent(pondId, now,
+                AlertTypeEnum.TEMPERATURE_HIGH, temperature));
+    }
+
+    if (TemperatureGuard.isLow(temperature) && !state.isTemperatureLowAlertActive()) {
+        state.setTemperatureLowAlertActive(true);
+        events.add(AlertRaisedEvent.temperatureLow(pondId, now, temperature));
+    } else if (state.isTemperatureLowAlertActive()
+            && TemperatureGuard.lowRecovered(temperature)) {
+        state.setTemperatureLowAlertActive(false);
+        events.add(new AlertRecoveredEvent(pondId, now,
+                AlertTypeEnum.TEMPERATURE_LOW, temperature));
     }
     return events;
 }

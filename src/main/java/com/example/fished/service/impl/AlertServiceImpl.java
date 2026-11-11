@@ -40,7 +40,10 @@ public class AlertServiceImpl extends ServiceImpl<AlertMapper, Alert>implements 
 
         entity.setStatus(AlertStatusEnum.PENDING.getCode());
         entity.setMessage(truncate(event.message(), 255));
-        entity.setDoValue(BigDecimal.valueOf(round2(event.doValue())));//记录溶解氧的值
+        // 溶氧告警记录溶氧值；水温辅助告警不携带溶氧值，具体水温写在 message 中。
+        if (event.doValue() != null) {
+            entity.setDoValue(BigDecimal.valueOf(round2(event.doValue())));
+        }
         entity.setPondTime(event.pondTime());//鱼塘时间
         save(entity);
     }
@@ -77,7 +80,7 @@ public class AlertServiceImpl extends ServiceImpl<AlertMapper, Alert>implements 
 
         operationLogService.record(OperationModuleEnum.ALERT, OperationActionEnum.ACK,
                 "鱼塘#" + alert.getPondId() + " 确认告警 #" + id + "（" + alert.getAlertType() + "，"
-                        + alert.getLevel() + "级，溶氧 " + alert.getDoValue() + "）", operator);
+                        + alert.getLevel() + "级，" + alert.getMessage() + "）", operator);
     }
     //字符串剪切，限制字符串最大长度
     private static String truncate(String s, int max)

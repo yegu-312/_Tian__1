@@ -8,7 +8,9 @@ import java.util.Optional;
 @Getter
 public enum AlertTypeEnum {
     DO_SAFETY_FLOOR("do_safety_floor","溶氧跌破安全下限"),
-    DO_ON_THRESHOLD("do_on_threshold","溶氧低于开机阈值");
+    DO_ON_THRESHOLD("do_on_threshold","溶氧低于开机阈值"),
+    TEMPERATURE_HIGH("temperature_high","水温高于适宜上限"),
+    TEMPERATURE_LOW("temperature_low","水温低于适宜下限");
 
     private final String code;
     private final String desc;

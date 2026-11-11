@@ -16,6 +16,7 @@ import com.example.fished.sim.PondManager;
 import com.example.fished.sim.PondSnapshot;
 import com.example.fished.sim.SimulationEngine;
 import com.example.fished.sim.StrategyParams;
+import com.example.fished.sim.TemperatureGuard;
 import com.example.fished.vo.AeratorLogVO;
 import com.example.fished.vo.AlertVO;
 import com.example.fished.vo.PondVO;
@@ -223,6 +224,9 @@ public class ReadTools {
         node.put("pondTime", snapshot.pondTime().toString());
         node.put("currentDo", round2(snapshot.currentDo()));
         node.put("temperature", round2(snapshot.temperature()));
+        node.put("temperatureStatus", TemperatureGuard.status(snapshot.temperature()).getDesc());
+        node.put("temperatureComfortMin", TemperatureGuard.COMFORT_MIN);
+        node.put("temperatureComfortMax", TemperatureGuard.COMFORT_MAX);
         node.put("aeratorOn", snapshot.aeratorOn());
         node.put("paused", snapshot.paused());
         node.put("speed", snapshot.speed());
