@@ -244,6 +244,13 @@
           suppressAuthRedirect: true
         });
       },
+      register: function (dto) {
+        return request('/auth/register', {
+          method: 'POST',
+          body: dto,
+          suppressAuthRedirect: true
+        });
+      },
       me: function () {
         return request('/auth/me', { suppressAuthRedirect: true });
       },

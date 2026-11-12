@@ -9,6 +9,8 @@ import com.example.fished.mapper.SysUserMapper;
 import com.example.fished.service.AuthService;
 import com.example.fished.vo.LoginVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -20,8 +22,13 @@ public class AuthServiceImpl implements AuthService {
 
     private static final Pattern USERNAME_PATTERN =
             Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_.-]{2,31}$");
+    private static final int PASSWORD_MIN = 6;
+    private static final int PASSWORD_MAX = 64;
 
     private final SysUserMapper sysUserMapper;
+
+    @Value("${app.auth.registration-enabled:true}")
+    private boolean registrationEnabled;
 
     public AuthServiceImpl(SysUserMapper sysUserMapper) {
         this.sysUserMapper = sysUserMapper;
@@ -45,6 +52,58 @@ public class AuthServiceImpl implements AuthService {
         }
 
         log.info("用户登录成功：{}（{}）", user.getUsername(), user.getRole());
+        return new LoginVO(user.getId(), user.getUsername(), user.getDisplayName(), user.getRole());
+    }
+
+    @Override
+    public LoginVO register(String username, String displayName, String password, String confirmPassword) {
+        if (!registrationEnabled) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "当前未开放注册，请联系管理员");
+        }
+
+        String name = username == null ? "" : username.trim();
+        if (!USERNAME_PATTERN.matcher(name).matches()) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(),
+                    "用户名需为 3-32 位，以字母或数字开头，可包含字母、数字、下划线、点或中划线");
+        }
+        if (password == null || password.length() < PASSWORD_MIN || password.length() > PASSWORD_MAX) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "密码长度需为 6-64 位");
+        }
+        if (!password.equals(confirmPassword)) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "两次输入的密码不一致");
+        }
+
+        Long exists = sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getUsername, name));
+        if (exists != null && exists > 0) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "该用户名已被注册");
+        }
+
+        String display = displayName == null ? "" : displayName.trim();
+        if (display.length() > 32) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "显示名称最多 32 个字符");
+        }
+        if (!StringUtils.hasText(display)) {
+            display = name;
+        }
+
+        String salt = PasswordHasher.newSalt();
+        SysUser user = new SysUser();
+        user.setUsername(name);
+        user.setSalt(salt);
+        user.setPasswordHash(PasswordHasher.hash(password, salt));
+        user.setDisplayName(display);
+        user.setRole("operator");
+        user.setEnabled(1);
+
+        try {
+            sysUserMapper.insert(user);
+        } catch (DuplicateKeyException e) {
+            // 并发注册时数据库唯一索引兜底
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "该用户名已被注册");
+        }
+
+        log.info("新用户注册成功：id={}，username={}", user.getId(), user.getUsername());
         return new LoginVO(user.getId(), user.getUsername(), user.getDisplayName(), user.getRole());
     }
 
@@ -81,7 +140,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         if (passwordChanged) {
-            if (newPassword.length() < 6 || newPassword.length() > 64) {
+            if (newPassword.length() < PASSWORD_MIN || newPassword.length() > PASSWORD_MAX) {
                 throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "新密码长度需为 6-64 位");
             }
             if (PasswordHasher.matches(newPassword, user.getSalt(), user.getPasswordHash())) {

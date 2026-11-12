@@ -6,8 +6,8 @@
   <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统登录">
   <title>登录 · AquaGuard 鱼塘溶氧后台</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/app.css">
-  <link rel="stylesheet" href="assets/login.css">
+  <link rel="stylesheet" href="assets/app.css?v=20261111-2">
+  <link rel="stylesheet" href="assets/login.css?v=20261112-1">
 </head>
 <body class="login-body">
   <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -127,8 +127,8 @@
         <div class="login-card-head">
           <div class="login-mini-mark"><svg class="icon"><use href="#i-waves"></use></svg></div>
           <span class="login-eyebrow">AQUAGUARD CONSOLE</span>
-          <h2>欢迎回来</h2>
-          <p>登录后进入鱼塘溶氧监控台</p>
+          <h2 id="loginCardTitle">欢迎回来</h2>
+          <p id="loginCardSubtitle">登录后进入鱼塘溶氧监控台</p>
         </div>
 
         <div class="login-alert" id="loginAlert" role="alert" hidden>
@@ -173,6 +173,64 @@
           </button>
         </form>
 
+        <form id="registerForm" novalidate hidden>
+          <label class="login-field" for="regUsername">
+            <span class="login-label">用户名</span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
+              <input id="regUsername" name="regUsername" type="text" maxlength="32"
+                     autocomplete="username" placeholder="3-32 位，字母或数字开头" spellcheck="false" required>
+            </span>
+          </label>
+
+          <label class="login-field" for="regDisplayName">
+            <span class="login-label">显示名称 <span class="login-optional">选填</span></span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>
+              <input id="regDisplayName" name="regDisplayName" type="text" maxlength="32"
+                     autocomplete="nickname" placeholder="默认使用用户名" spellcheck="false">
+            </span>
+          </label>
+
+          <label class="login-field" for="regPassword">
+            <span class="login-label">密码</span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg>
+              <input id="regPassword" name="regPassword" type="password" maxlength="64"
+                     autocomplete="new-password" placeholder="6-64 位密码" required>
+              <button class="pwd-toggle" id="regPwdToggle" type="button"
+                      aria-label="显示密码" aria-pressed="false" title="显示密码">
+                <svg class="icon"><use href="#i-eye"></use></svg>
+              </button>
+            </span>
+          </label>
+
+          <label class="login-field" for="regConfirm">
+            <span class="login-label">确认密码</span>
+            <span class="login-input">
+              <svg class="icon" aria-hidden="true"><use href="#i-lock"></use></svg>
+              <input id="regConfirm" name="regConfirm" type="password" maxlength="64"
+                     autocomplete="new-password" placeholder="请再次输入密码" required>
+              <button class="pwd-toggle" id="regConfirmToggle" type="button"
+                      aria-label="显示密码" aria-pressed="false" title="显示密码">
+                <svg class="icon"><use href="#i-eye"></use></svg>
+              </button>
+            </span>
+          </label>
+
+          <p class="login-hint">注册后自动登录并进入监控台，新账号角色为操作员。</p>
+
+          <button class="btn primary login-submit" id="registerBtn" type="submit">
+            <span class="login-submit-text">注册并进入</span>
+            <svg class="icon login-submit-arrow" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+          </button>
+        </form>
+
+        <p class="login-switch">
+          <span id="switchHint">还没有账号？</span>
+          <button class="login-link" id="switchModeBtn" type="button">立即注册</button>
+        </p>
+
         <p class="login-foot">
           <svg class="icon"><use href="#i-activity"></use></svg>
           登录状态由服务端会话维护，2 小时无操作自动失效
@@ -181,8 +239,8 @@
     </section>
   </main>
 
-  <script src="assets/api.js"></script>
-  <script src="assets/ui.js"></script>
-  <script src="assets/login.js"></script>
+  <script src="assets/api.js?v=20261112-1"></script>
+  <script src="assets/ui.js?v=20261105-1"></script>
+  <script src="assets/login.js?v=20261112-1"></script>
 </body>
 </html>

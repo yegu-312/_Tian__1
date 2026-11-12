@@ -5,6 +5,7 @@ import com.example.fished.common.Result;
 import com.example.fished.common.ResultCodeEnum;
 import com.example.fished.dto.AccountUpdateDTO;
 import com.example.fished.dto.LoginDTO;
+import com.example.fished.dto.RegisterDTO;
 import com.example.fished.service.AuthService;
 import com.example.fished.vo.LoginVO;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,7 +33,22 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginVO> login(@Valid @RequestBody LoginDTO dto, HttpServletRequest request) {
         LoginVO user = authService.login(dto.getUsername(), dto.getPassword());
+        startSession(request, user);
+        return Result.success(user);
+    }
 
+    /**
+     * 注册成功后直接建立登录会话，前端无需再登录一次。
+     */
+    @PostMapping("/register")
+    public Result<LoginVO> register(@Valid @RequestBody RegisterDTO dto, HttpServletRequest request) {
+        LoginVO user = authService.register(
+                dto.getUsername(), dto.getDisplayName(), dto.getPassword(), dto.getConfirmPassword());
+        startSession(request, user);
+        return Result.success(user);
+    }
+
+    private void startSession(HttpServletRequest request, LoginVO user) {
         // 登录成功后更换会话，避免会话固定攻击
         HttpSession old = request.getSession(false);
         if (old != null) {
@@ -41,8 +57,6 @@ public class AuthController {
         HttpSession session = request.getSession(true);
         session.setAttribute(SESSION_USER, user);
         session.setMaxInactiveInterval(SESSION_SECONDS);
-
-        return Result.success(user);
     }
 
     @GetMapping("/me")

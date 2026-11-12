@@ -451,6 +451,46 @@
 
 .login-foot .icon { width: 12px; height: 12px; color: var(--success); }
 
+/* -------------------------------- 注册模式 -------------------------------- */
+
+.login-optional {
+  margin-left: 4px;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.login-hint {
+  margin: -3px 0 16px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.login-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 18px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.login-link {
+  padding: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-link:hover { color: var(--primary-strong); text-decoration: underline; }
+
+.login-switch + .login-foot { margin-top: 14px; }
+
 /* --------------------------------- 响应式 --------------------------------- */
 
 @media (max-width: 1040px) {
