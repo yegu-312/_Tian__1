@@ -171,4 +171,86 @@ class WriteToolsValidationTest {
                 () -> tool("pause_pond").execute(mapper.createObjectNode(), context()));
         assertTrue(error.getMessage().contains("pondId"));
     }
+
+    // ------------------------------------------------------------------ 换水 / 调水
+
+    private static PondSnapshot snapshot(double ph, double currentDo) {
+        return new PondSnapshot(LocalDateTime.of(2026, 11, 15, 10, 0),
+                currentDo, 25.0, false, false, 1, 240, ph);
+    }
+
+    @Test
+    @DisplayName("换水比例超出 10%-50% 被拒绝")
+    void rejectsExchangeRatioOutOfRange() {
+        BusinessException tooSmall = assertThrows(BusinessException.class,
+                () -> tool("exchange_water").execute(args("{\"pondId\":1,\"ratioPercent\":5}"), context()));
+        assertTrue(tooSmall.getMessage().contains("10%-50%"));
+
+        BusinessException tooLarge = assertThrows(BusinessException.class,
+                () -> tool("exchange_water").describe(args("{\"pondId\":1,\"ratioPercent\":60}")));
+        assertTrue(tooLarge.getMessage().contains("10%-50%"));
+    }
+
+    @Test
+    @DisplayName("调水目标 pH 必须在 6.5-8.5")
+    void rejectsAdjustTargetOutOfRange() {
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> tool("adjust_water").execute(args("{\"pondId\":1,\"targetPh\":9.2}"), context()));
+        assertTrue(error.getMessage().contains("6.5-8.5"));
+    }
+
+    @Test
+    @DisplayName("调水强度只能是 1-3")
+    void rejectsAdjustStrength() {
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> tool("adjust_water").execute(args("{\"pondId\":1,\"targetPh\":7.5,\"strength\":5}"), context()));
+        assertTrue(error.getMessage().contains("强度"));
+    }
+
+    @Test
+    @DisplayName("换水执行后写 water 模块审计日志")
+    void exchangeWritesAuditLog() throws Exception {
+        when(engine.exchangeWater(anyDouble())).thenReturn(
+                new SimulationEngine.WaterActionResult(snapshot(7.4, 5.2), snapshot(7.3, 5.9)));
+
+        String result = tool("exchange_water")
+                .execute(args("{\"pondId\":1,\"ratioPercent\":30}"), context());
+
+        verify(engine).exchangeWater(0.30);
+        verify(operationLogService).record(eq(OperationModuleEnum.WATER),
+                eq(OperationActionEnum.EXCHANGE_WATER), contains("换水 30%"), eq("alice"));
+        assertTrue(result.contains("换水 30% 完成"));
+        assertTrue(result.contains("\"ph\":7.3"));
+    }
+
+    @Test
+    @DisplayName("调水执行后写 water 模块审计日志")
+    void adjustWritesAuditLog() throws Exception {
+        when(engine.adjustWater(anyDouble(), anyInt())).thenReturn(
+                new SimulationEngine.WaterActionResult(snapshot(7.1, 5.4), snapshot(7.5, 5.6)));
+
+        String result = tool("adjust_water")
+                .execute(args("{\"pondId\":1,\"targetPh\":7.5,\"strength\":2}"), context());
+
+        verify(engine).adjustWater(7.5, 2);
+        verify(operationLogService).record(eq(OperationModuleEnum.WATER),
+                eq(OperationActionEnum.ADJUST_WATER), contains("目标 7.50"), eq("alice"));
+        assertTrue(result.contains("调水完成"));
+    }
+
+    @Test
+    @DisplayName("换水/调水确认文案包含塘名和参数")
+    void describeWaterActions() throws Exception {
+        when(engine.getSnapshot()).thenReturn(snapshot(7.1, 5.4));
+
+        String exchange = tool("exchange_water").describe(args("{\"pondId\":1,\"ratioPercent\":40}"));
+        assertTrue(exchange.contains("一号塘"));
+        assertTrue(exchange.contains("换水 40%"));
+
+        String adjust = tool("adjust_water").describe(args("{\"pondId\":1,\"targetPh\":7.5,\"strength\":2}"));
+        assertTrue(adjust.contains("一号塘"));
+        assertTrue(adjust.contains("pH 7.10"));
+        assertTrue(adjust.contains("目标 7.50"));
+        assertTrue(adjust.contains("强度 2"));
+    }
 }

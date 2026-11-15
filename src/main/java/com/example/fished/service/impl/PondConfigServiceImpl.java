@@ -49,6 +49,7 @@ public class PondConfigServiceImpl extends ServiceImpl<PondConfigMapper, PondCon
         entity.setProduceCoefficient(dto.getProduceCoefficient());
         entity.setConsumeCoefficient(dto.getConsumeCoefficient());
         entity.setAeratorRate(dto.getAeratorRate());
+        entity.setAeratorPowerKw(dto.getAeratorPowerKw());
         updateById(entity);
         // //通知对应鱼塘的仿真引擎重新加载
         simReloadService.reload(pondId);
@@ -84,6 +85,8 @@ public class PondConfigServiceImpl extends ServiceImpl<PondConfigMapper, PondCon
                         after.getConsumeCoefficient())
                 .appendIfChanged("增氧速率",
                         before.getAeratorRate(), after.getAeratorRate())
+                .appendIfChanged("增氧机功率(kW)",
+                        before.getAeratorPowerKw(), after.getAeratorPowerKw())
                 .text();
    }
    // 强制获取配置

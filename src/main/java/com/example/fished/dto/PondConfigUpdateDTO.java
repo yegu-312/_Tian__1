@@ -53,6 +53,13 @@ public class PondConfigUpdateDTO {
     @DecimalMax(value = "10.0", message = "增氧速率最多 10.0")
     private BigDecimal aeratorRate;
 
+    /** 增氧机额定功率；演示机组默认 1.5 kW */
+    @NotNull(message = "增氧机功率不能为空")
+    @DecimalMin(value = "0.01", message = "增氧机功率必须大于 0")
+    @DecimalMax(value = "100.0", message = "增氧机功率最多 100 kW")
+    @Digits(integer = 3, fraction = 2, message = "增氧机功率最多 2 位小数")
+    private BigDecimal aeratorPowerKw;
+
     @AssertTrue(message="溶氧上限必须大于下限")
     public boolean isDoRangeValid() {
         if (doMin == null || doMax == null) {

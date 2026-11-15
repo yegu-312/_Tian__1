@@ -12,7 +12,8 @@ public enum OperationModuleEnum {
     SETTING("setting","系统设置"),
     CLOCK("clock","鱼塘时钟"),
     ALERT("alert","告警中心"),
-    PRICE("price","电价管理");
+    PRICE("price","电价管理"),
+    WATER("water","换水调水");
     private final String code;
     private final String desc;
 

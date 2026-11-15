@@ -43,6 +43,17 @@ public class PondController {
         return Result.success(created);
     }
 
+    @DeleteMapping("/{pondId}")
+    public Result<Void> delete(@PathVariable Long pondId,
+                               @RequestHeader(value = "X-Operator", required = false) String operator) {
+        String name = pondManager.nameOf(pondId);
+        pondManager.deletePond(pondId);
+        operationLogService.record(OperationModuleEnum.POND_CONFIG, OperationActionEnum.DELETE,
+                "删除鱼塘 #" + pondId + "（" + name + "）及其策略、设置、告警、采样与增氧日志",
+                operatorOf(operator));
+        return Result.success();
+    }
+
     private static String operatorOf(String header) {
         return StringUtils.hasText(header) ? header : DEFAULT_OPERATOR;
     }

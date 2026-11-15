@@ -8,6 +8,7 @@ import java.util.Optional;
 @Getter
 public enum OperationActionEnum {
     CREATE("create","新增"),
+    DELETE("delete","删除"),
     UPDATE("update","修改配置"),
     RESET("reset","重置模拟"),
     MANUAL_ON("manual_on","手动开机"),
@@ -16,7 +17,9 @@ public enum OperationActionEnum {
     RESUME("resume","继续仿真"),
     SPEED("speed","调整倍速"),
     SET_TIME("set_time","设置鱼塘时间"),
-    ACK("ack","确认告警");
+    ACK("ack","确认告警"),
+    EXCHANGE_WATER("exchange_water","换水"),
+    ADJUST_WATER("adjust_water","调水");
 
     private final String code;
     private final String desc;

@@ -18,4 +18,9 @@ public interface AuthService {
      * 修改当前登录用户的账号名和 / 或密码，成功返回更新后的用户信息。
      */
     LoginVO updateAccount(Long userId, String currentPassword, String newUsername, String newPassword);
+
+    /**
+     * 删除当前登录账号。必须验证当前密码，且系统至少保留一个可用账号。
+     */
+    void deleteAccount(Long userId, String currentPassword);
 }

@@ -15,6 +15,7 @@ public class PondVO {
     private LocalDateTime pondTime;
     private double currentDo;
     private double temperature;
+    private double ph;
     private boolean aeratorOn;
     private boolean paused;
     private int speed;
@@ -27,6 +28,7 @@ public class PondVO {
             vo.setPondTime(snapshot.pondTime());
             vo.setCurrentDo(snapshot.currentDo());
             vo.setTemperature(snapshot.temperature());
+            vo.setPh(snapshot.ph());
             vo.setAeratorOn(snapshot.aeratorOn());
             vo.setPaused(snapshot.paused());
             vo.setSpeed(snapshot.speed());

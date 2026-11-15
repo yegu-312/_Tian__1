@@ -7,6 +7,7 @@ import com.example.fished.sim.PondManager;
 import com.example.fished.sim.PondSnapshot;
 import com.example.fished.sim.SimulationEngine;
 import com.example.fished.sim.StrategyParams;
+import com.example.fished.vo.PhStatusVO;
 import com.example.fished.vo.PondRealtimeVO;
 import com.example.fished.vo.RealtimeVO;
 import com.example.fished.vo.TemperatureStatusVO;
@@ -85,6 +86,7 @@ public class MonitorController {
         vo.setThresholds(new RealtimeVO.Thresholds(params.safetyFloor(),
                 params.onThreshold(),params.offThreshold()));//三条阈值参考线
         vo.setTemperatureStatus(TemperatureStatusVO.from(snapshot.temperature()));//水温辅助检测状态
+        vo.setPhStatus(PhStatusVO.from(snapshot.ph()));//pH 辅助状态
         return vo;
     }
 

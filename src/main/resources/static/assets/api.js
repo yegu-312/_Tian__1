@@ -119,6 +119,50 @@
     return payload ? payload.data : null;
   }
 
+  /** 下载文件（CSV 等）：仍然走会话鉴权，失败时解析后端 JSON 错误。 */
+  async function requestBlob(path, options) {
+    const opts = options || {};
+    let url;
+    try {
+      url = new URL(BASE + path);
+    } catch (e) {
+      throw new ApiError('接口地址不正确：' + path, 0);
+    }
+    if (opts.params) {
+      Object.entries(opts.params).forEach(function (entry) {
+        const key = entry[0];
+        const value = entry[1];
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.set(key, String(value));
+        }
+      });
+    }
+
+    let response;
+    try {
+      response = await fetch(url.toString(), {
+        headers: { Accept: 'text/csv, application/json' },
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+    } catch (e) {
+      throw new ApiError('无法连接后端（' + ORIGIN + '），请确认服务已启动', 0);
+    }
+    if (response.status === 401) {
+      redirectToLogin();
+      throw new ApiError('登录已过期，请重新登录', 401);
+    }
+    if (!response.ok) {
+      let message = '下载失败（HTTP ' + response.status + '）';
+      try {
+        const payload = await response.json();
+        if (payload && payload.message) message = payload.message;
+      } catch (e) { /* 非 JSON 响应 */ }
+      throw new ApiError(message, response.status);
+    }
+    return response.blob();
+  }
+
   /**
    * POST + SSE 流式读取。handlers 以事件名为 key：
    * text / tool / pending_action / done / error；连接提前结束时调用 closed。
@@ -257,6 +301,9 @@
       updateAccount: function (dto) {
         return request('/auth/account', { method: 'PUT', body: dto });
       },
+      deleteAccount: function (currentPassword) {
+        return request('/auth/account', { method: 'DELETE', body: { currentPassword: currentPassword } });
+      },
       logout: function () {
         return request('/auth/logout', { method: 'POST', suppressAuthRedirect: true });
       }
@@ -271,6 +318,9 @@
       list: function () { return request('/ponds'); },
       create: function (pondName) {
         return request('/ponds', { method: 'POST', body: { pondName: pondName } });
+      },
+      remove: function (pondId) {
+        return request('/ponds/' + encodeURIComponent(pondId), { method: 'DELETE' });
       }
     },
 
@@ -293,6 +343,16 @@
       return request('/monitor/history', { params: { limit: limit, pondId: pondId } });
     },
     buffer: function (pondId) { return request('/monitor/buffer', { params: { pondId: pondId } }); },
+
+    /* 历史记录：溶氧 / 水温 / 增氧机 */
+    records: {
+      series: function (pondId, from, to) {
+        return request('/history/series', { params: { pondId: pondId, from: from, to: to } });
+      },
+      exportCsv: function (pondId, from, to) {
+        return requestBlob('/history/export', { params: { pondId: pondId, from: from, to: to } });
+      }
+    },
 
     /* 鱼塘时钟 */
     clock: {
@@ -336,6 +396,9 @@
       get: function () { return request('/electricity'); },
       update: function (periods) {
         return request('/electricity', { method: 'PUT', body: { periods: periods } });
+      },
+      cost: function (pondId) {
+        return request('/electricity/cost', { params: { pondId: pondId } });
       }
     },
 

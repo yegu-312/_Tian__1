@@ -83,6 +83,10 @@ public class SimulationEngine {
         state.setTemperature(temperature);
         state.setDoValue(nextDo);
 
+        double phNoise = random.nextGaussian() * 0.001;
+        state.setPhValue(Physics.nextPh(state.getPhValue(),
+                Physics.naturalPh(state.getPondTime()), dtHours, phNoise));
+
         Double predictedMin=null;
         int predictMinutes= strategyParams.predictMinutes();
         if(predictMinutes>0){
@@ -163,7 +167,8 @@ public class SimulationEngine {
         history.sampleIfDue(
                 new DoPoint(
                         state.getElapsedMinutes(),round2(state.getDoValue()),
-                        round2(state.getTemperature()),state.isAeratorOn()),
+                        round2(state.getTemperature()),state.isAeratorOn(),
+                        round2(state.getPhValue())),
                         intervalMinutes);
     }
 
@@ -171,7 +176,8 @@ public class SimulationEngine {
         return new PondSnapshot(
                 state.getPondTime(),round2(state.getDoValue()),
                 round2(state.getTemperature()),state.isAeratorOn(),
-                state.isPaused(),state.getSpeed(),state.getElapsedMinutes());
+                state.isPaused(),state.getSpeed(),state.getElapsedMinutes(),
+                round2(state.getPhValue()));
     }
     public long getPondId() {
         return pondId;
@@ -262,6 +268,7 @@ public class SimulationEngine {
         try {
             state.setPondTime(pondTime);
             state.setTemperature(Physics.waterTemperature(pondTime, simParams));
+            state.setPhValue(Physics.naturalPh(pondTime));
             // 故意不动 elapsedMinutes
             snapshot = buildSnapshot();
             return snapshot;
@@ -269,6 +276,53 @@ public class SimulationEngine {
             lock.unlock();
         }
     }
+    /**
+     * 换水：按比例用外源水稀释当前水体，pH 向水源值靠拢，溶氧向水源值靠拢。
+     * 只改变当前状态，不改变水温模型和增氧策略。
+     */
+    public WaterActionResult exchangeWater(double ratio) {
+        double safeRatio = Math.max(0.05, Math.min(0.50, ratio));
+        lock.lock();
+        try {
+            PondSnapshot before = buildSnapshot();
+            double sourceDo = Physics.saturationDo(state.getTemperature()) * 0.85;
+            state.setDoValue(clamp(state.getDoValue() * (1 - safeRatio) + sourceDo * safeRatio, 0, 20));
+            state.setPhValue(Physics.exchangePh(state.getPhValue(), safeRatio));
+            snapshot = buildSnapshot();
+            return new WaterActionResult(before, snapshot);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * 调水：投放调水剂，把 pH 拉向目标值，并对溶氧做一次轻微改善。
+     */
+    public WaterActionResult adjustWater(double targetPh, int strength) {
+        int safeStrength = Math.max(1, Math.min(3, strength));
+        lock.lock();
+        try {
+            PondSnapshot before = buildSnapshot();
+            state.setPhValue(Physics.adjustPh(state.getPhValue(), targetPh, safeStrength));
+            double saturation = Physics.saturationDo(state.getTemperature());
+            if (state.getDoValue() < saturation) {
+                state.setDoValue(Math.min(saturation, state.getDoValue() + 0.10 * safeStrength));
+            }
+            snapshot = buildSnapshot();
+            return new WaterActionResult(before, snapshot);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** 换水/调水前后的快照，供 Agent 返回给模型和写入审计日志。 */
+    public record WaterActionResult(PondSnapshot before, PondSnapshot after) {
+    }
+
+    private static double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     //重置时间和参数
     public PondSnapshot reset() {
         lock.lock();

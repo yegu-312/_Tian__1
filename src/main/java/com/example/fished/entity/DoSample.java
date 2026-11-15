@@ -20,6 +20,8 @@ public class DoSample implements Serializable {
     private LocalDateTime pondTime;
     private BigDecimal doValue;
     private BigDecimal temperature;
+    /** pH 辅助水质指标。 */
+    private BigDecimal phValue;
     private Boolean aeratorOn;
 
     @TableField(fill= FieldFill.INSERT)

@@ -42,10 +42,7 @@ public class SimpleAgentTool implements AgentTool {
         if (describer == null) {
             return spec.description();
         }
-        try {
-            return describer.apply(args);
-        } catch (Exception e) {
-            return spec.description();
-        }
+        // 参数非法时让异常冒到 AgentService，由它把原因回填给模型修正，而不是显示一张无法执行的确认卡片。
+        return describer.apply(args);
     }
 }

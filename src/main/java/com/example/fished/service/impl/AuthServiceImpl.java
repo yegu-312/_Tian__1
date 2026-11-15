@@ -157,4 +157,27 @@ public class AuthServiceImpl implements AuthService {
 
         return new LoginVO(user.getId(), user.getUsername(), user.getDisplayName(), user.getRole());
     }
+
+    @Override
+    public void deleteAccount(Long userId, String currentPassword) {
+        SysUser user = userId == null ? null : sysUserMapper.selectById(userId);
+        if (user == null || !Integer.valueOf(1).equals(user.getEnabled())) {
+            throw new BusinessException(ResultCodeEnum.UNAUTHORIZED.getCode(), "登录状态已失效，请重新登录");
+        }
+        if (!PasswordHasher.matches(currentPassword, user.getSalt(), user.getPasswordHash())) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "当前密码不正确");
+        }
+        Long enabledCount = sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getEnabled, 1));
+        if (enabledCount == null || enabledCount <= 1) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(),
+                    "系统至少保留一个可用账号，无法删除当前账号");
+        }
+
+        int removed = sysUserMapper.physicalDeleteById(userId);
+        if (removed == 0) {
+            throw new BusinessException(ResultCodeEnum.FAIL.getCode(), "账号删除失败，请稍后重试");
+        }
+        log.info("账号已删除：id={}，username={}", user.getId(), user.getUsername());
+    }
 }

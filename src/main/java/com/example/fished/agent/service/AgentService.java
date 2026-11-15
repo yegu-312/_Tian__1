@@ -37,6 +37,7 @@ public class AgentService {
             Map.entry("get_current_time", "查询现实时间"),
             Map.entry("list_ponds", "查询鱼塘列表"),
             Map.entry("get_pond_realtime", "查询实时数据"),
+            Map.entry("measure_ph", "测量 pH"),
             Map.entry("get_pond_history", "查询历史趋势"),
             Map.entry("compare_ponds", "对比鱼塘"),
             Map.entry("list_alerts", "查询告警"),
@@ -49,7 +50,9 @@ public class AgentService {
             Map.entry("set_manual_aerator", "开关增氧机"),
             Map.entry("update_aerator_strategy", "修改增氧策略"),
             Map.entry("pause_pond", "暂停仿真"),
-            Map.entry("resume_pond", "继续仿真")
+            Map.entry("resume_pond", "继续仿真"),
+            Map.entry("exchange_water", "换水"),
+            Map.entry("adjust_water", "调水")
     );
 
     private final AgentProperties properties;
@@ -497,6 +500,8 @@ public class AgentService {
             case "update_aerator_strategy" -> "修改增氧策略";
             case "pause_pond" -> "暂停仿真";
             case "resume_pond" -> "继续仿真";
+            case "exchange_water" -> "换水";
+            case "adjust_water" -> "调水";
             default -> "待确认操作";
         };
     }

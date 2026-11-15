@@ -49,9 +49,10 @@
       this.drag = null;
       this.onRangeSelect = null;
       this.onRangeClear = null;
-      this.showPrediction = true;
-      this.showThresholds = true;
+      this.showPrediction = opts.showPrediction !== false;
+      this.showThresholds = opts.showThresholds !== false;
       this.showTemperature = opts.showTemperature !== false;
+      this.axisWithDate = !!opts.axisWithDate;
       this.w = 0;
       this.h = 0;
 
@@ -113,6 +114,24 @@
     setShowTemperature(show) {
       this.showTemperature = !!show;
       this.draw();
+    }
+
+    destroy() {
+      if (this._ro) {
+        this._ro.disconnect();
+        this._ro = null;
+      }
+      if (!this.canvas) return;
+      this.canvas.removeEventListener('pointerdown', this._onDown);
+      this.canvas.removeEventListener('pointermove', this._onMove);
+      this.canvas.removeEventListener('pointerup', this._onUp);
+      this.canvas.removeEventListener('pointercancel', this._onUp);
+      this.canvas.removeEventListener('pointerleave', this._onLeave);
+      this.data = null;
+      this.hover = null;
+      this.selection = null;
+      this.drag = null;
+      this._hideTooltip();
     }
 
     resize() {
@@ -293,7 +312,9 @@
         ctx.stroke();
         ctx.fillStyle = cssVar('--chart-axis');
         ctx.textAlign = i === 0 ? 'left' : i === tickCount ? 'right' : 'center';
-        const label = baseTime ? FMT.shifted(baseTime, offset - now, false) : Math.round(offset) + 'm';
+        const label = baseTime
+          ? FMT.shifted(baseTime, offset - now, this.axisWithDate)
+          : Math.round(offset) + 'm';
         ctx.fillText(label, x, padT + plotH + 8);
       }
 
@@ -541,20 +562,20 @@
       (d.history || []).forEach(p => list.push({
         kind: 'history', minuteOffset: Number(p.minuteOffset),
         doValue: Number(p.doValue), temperature: Number(p.temperature),
-        aeratorOn: !!p.aeratorOn
+        ph: Number(p.ph), aeratorOn: !!p.aeratorOn
       }));
       if (Number.isFinite(Number(d.currentDo)) && Number.isFinite(Number(d.elapsedMinutes))) {
         list.push({
           kind: 'current', minuteOffset: Number(d.elapsedMinutes),
           doValue: Number(d.currentDo), temperature: Number(d.temperature),
-          aeratorOn: !!d.aeratorOn
+          ph: Number(d.ph), aeratorOn: !!d.aeratorOn
         });
       }
       if (this.showPrediction) {
         (d.prediction || []).forEach(p => list.push({
           kind: 'prediction', minuteOffset: Number(p.minuteOffset),
           doValue: Number(p.doValue), temperature: Number(p.temperature),
-          aeratorOn: !!p.aeratorOn
+          ph: Number(p.ph), aeratorOn: !!p.aeratorOn
         }));
       }
       return list;
@@ -676,8 +697,9 @@
         '<div class="tip-row"><span class="tip-dot" style="background:' + color + '"></span>' +
           '溶氧 <strong>' + FMT.num(point.doValue) + '</strong> mg/L' +
           '<span class="tip-muted">· ' + kindLabel + '</span></div>' +
-        '<div class="tip-row tip-muted">水温 ' + FMT.num(point.temperature, 1) + ' ℃ · 增氧机' +
-          (point.aeratorOn ? '运行' : '关闭') + '</div>';
+        '<div class="tip-row tip-muted">水温 ' + FMT.num(point.temperature, 1) + ' ℃' +
+          (point.ph > 0 ? ' · pH ' + FMT.num(point.ph, 2) : '') +
+          ' · 增氧机' + (point.aeratorOn ? '运行' : '关闭') + '</div>';
 
       const y = this.geom.Y(point.doValue);
       const left = clamp(px, 84, this.w - 84);
@@ -738,8 +760,689 @@
     return null;
   }
 
+  /* --------------------------- 柱状图 --------------------------- */
+
+  function setupCanvas(chart) {
+    if (window.ResizeObserver) {
+      chart._ro = new ResizeObserver(() => chart.resize());
+      chart._ro.observe(chart.canvas.parentElement);
+    } else {
+      chart._resizeHandler = () => chart.resize();
+      window.addEventListener('resize', chart._resizeHandler);
+    }
+  }
+
+  function teardownCanvas(chart) {
+    if (chart._ro) {
+      chart._ro.disconnect();
+      chart._ro = null;
+    }
+    if (chart._resizeHandler) {
+      window.removeEventListener('resize', chart._resizeHandler);
+      chart._resizeHandler = null;
+    }
+    chart.data = null;
+    chart.hover = null;
+    chart._hideTooltip();
+  }
+
+  function resizeCanvas(chart) {
+    if (!chart.canvas || !chart.canvas.parentElement) return;
+    const rect = chart.canvas.parentElement.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    const dpr = window.devicePixelRatio || 1;
+    chart.w = rect.width;
+    chart.h = rect.height;
+    chart.canvas.width = Math.round(rect.width * dpr);
+    chart.canvas.height = Math.round(rect.height * dpr);
+    chart.canvas.style.width = rect.width + 'px';
+    chart.canvas.style.height = rect.height + 'px';
+    chart.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    chart.draw();
+  }
+
+  function historyPoints(d) {
+    return (d && d.history ? d.history.slice() : [])
+      .map(p => ({
+        minuteOffset: Number(p.minuteOffset),
+        doValue: Number(p.doValue),
+        temperature: Number(p.temperature),
+        ph: Number(p.ph),
+        aeratorOn: !!p.aeratorOn
+      }))
+      .filter(p => Number.isFinite(p.minuteOffset) && Number.isFinite(p.doValue))
+      .sort((a, b) => a.minuteOffset - b.minuteOffset);
+  }
+
+  function statusColor(value, thresholds) {
+    const floor = Number(thresholds.safetyFloor);
+    const on = Number(thresholds.onThreshold);
+    if (Number.isFinite(floor) && value < floor) return cssVar('--danger');
+    if (Number.isFinite(on) && value < on) return cssVar('--chart-on');
+    return cssVar('--chart-history');
+  }
+
+  function yAxisRange(values, thresholds, includeThresholds, options) {
+    const list = values.filter(v => Number.isFinite(v));
+    if (includeThresholds) {
+      [thresholds.safetyFloor, thresholds.onThreshold, thresholds.offThreshold].forEach(v => {
+        if (Number.isFinite(Number(v))) list.push(Number(v));
+      });
+    }
+    let min = list.length ? Math.min.apply(null, list) : 0;
+    let max = list.length ? Math.max.apply(null, list) : 10;
+    if (options && options.zeroBase) {
+      // 柱状图必须从 0 起画，截断纵轴会放大柱子之间的差异。
+      const step = niceStep(Math.max(1, max) / 4);
+      return { min: 0, max: Math.ceil(max / step) * step, step };
+    }
+    const span = Math.max(1, max - min);
+    min = Math.max(0, min - span * 0.12);
+    max = max + span * 0.12;
+    const step = niceStep((max - min) / 4);
+    min = Math.floor(min / step) * step;
+    max = Math.ceil(max / step) * step;
+    if (max <= min) max = min + step;
+    return { min, max, step };
+  }
+
+  /**
+   * 柱状图按等宽时间分箱聚合，避免相邻采样过近时柱子互相遮挡。
+   * 返回按时间排序的分箱，每个分箱保存均值与采样数。
+   */
+  function barBins(points, plotW) {
+    if (points.length < 2) {
+      return points.map((p, index) => ({
+        index, center: p.minuteOffset, minOffset: p.minuteOffset, maxOffset: p.minuteOffset,
+        count: 1, doValue: p.doValue, temperature: p.temperature, ph: p.ph, aeratorOn: p.aeratorOn
+      }));
+    }
+    const xMin = points[0].minuteOffset;
+    const xMax = points[points.length - 1].minuteOffset;
+    const px = offset => ((offset - xMin) / (xMax - xMin)) * plotW;
+    const target = clamp(Math.floor(plotW / 18), 6, 60);
+    const binMinutes = Math.max(1, (xMax - xMin) / target);
+    const map = new Map();
+    points.forEach(p => {
+      const key = Math.floor((p.minuteOffset - xMin) / binMinutes);
+      let bin = map.get(key);
+      if (!bin) {
+        bin = {
+          key, count: 0, sumDo: 0, sumTemp: 0, tempCount: 0, sumPh: 0, phCount: 0,
+          anyOn: false, minOffset: p.minuteOffset, maxOffset: p.minuteOffset
+        };
+        map.set(key, bin);
+      }
+      bin.count++;
+      bin.sumDo += p.doValue;
+      if (Number.isFinite(p.temperature)) {
+        bin.sumTemp += p.temperature;
+        bin.tempCount++;
+      }
+      if (Number.isFinite(p.ph) && p.ph > 0) {
+        bin.sumPh += p.ph;
+        bin.phCount++;
+      }
+      bin.anyOn = bin.anyOn || p.aeratorOn;
+      bin.minOffset = Math.min(bin.minOffset, p.minuteOffset);
+      bin.maxOffset = Math.max(bin.maxOffset, p.minuteOffset);
+    });
+    // 相邻分箱在像素上靠得太近时合并，保证柱子不互相遮挡。
+    const merged = [];
+    Array.from(map.values()).sort((a, b) => a.key - b.key).forEach(bin => {
+      const center = (bin.minOffset + bin.maxOffset) / 2;
+      const last = merged[merged.length - 1];
+      if (last && px(center) - px(last.center) < 10) {
+        last.count += bin.count;
+        last.sumDo += bin.sumDo;
+        last.sumTemp += bin.sumTemp;
+        last.tempCount += bin.tempCount;
+        last.sumPh += bin.sumPh;
+        last.phCount += bin.phCount;
+        last.anyOn = last.anyOn || bin.anyOn;
+        last.minOffset = Math.min(last.minOffset, bin.minOffset);
+        last.maxOffset = Math.max(last.maxOffset, bin.maxOffset);
+        last.center = (last.minOffset + last.maxOffset) / 2;
+      } else {
+        merged.push(Object.assign({}, bin, { center }));
+      }
+    });
+    return merged.map((bin, index) => ({
+      index,
+      center: bin.center,
+      minOffset: bin.minOffset,
+      maxOffset: bin.maxOffset,
+      count: bin.count,
+      doValue: bin.sumDo / bin.count,
+      temperature: bin.tempCount ? bin.sumTemp / bin.tempCount : NaN,
+      ph: bin.phCount ? bin.sumPh / bin.phCount : 0,
+      aeratorOn: bin.anyOn
+    }));
+  }
+
+  class DoBarChart {
+    constructor(canvas, tooltipEl) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.tooltip = tooltipEl;
+      this.emptyEl = canvas.parentElement ? canvas.parentElement.querySelector('.chart-empty') : null;
+      this.data = null;
+      this.geom = null;
+      this.hover = null;
+      this.w = 0;
+      this.h = 0;
+      this._onMove = this._onMove.bind(this);
+      this._onLeave = this._onLeave.bind(this);
+      canvas.addEventListener('pointermove', this._onMove);
+      canvas.addEventListener('pointerleave', this._onLeave);
+      setupCanvas(this);
+      this.resize();
+    }
+
+    setData(data) {
+      this.data = data;
+      this.hover = null;
+      this._hideTooltip();
+      this.draw();
+    }
+
+    clearSelection() {
+      this.hover = null;
+      this._hideTooltip();
+      this.draw();
+    }
+
+    resize() {
+      resizeCanvas(this);
+    }
+
+    destroy() {
+      if (!this.canvas) return;
+      this.canvas.removeEventListener('pointermove', this._onMove);
+      this.canvas.removeEventListener('pointerleave', this._onLeave);
+      teardownCanvas(this);
+    }
+
+    draw() {
+      if (!this.ctx || !this.w || !this.h) return;
+      const ctx = this.ctx;
+      const w = this.w;
+      const h = this.h;
+      ctx.clearRect(0, 0, w, h);
+
+      const points = historyPoints(this.data);
+      if (this.emptyEl) this.emptyEl.hidden = points.length > 0;
+      if (!points.length) {
+        this.geom = null;
+        return;
+      }
+
+      const d = this.data;
+      const thresholds = d.thresholds || {};
+      const padL = 46;
+      const padR = 18;
+      const padT = 18;
+      const padB = 30;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+      if (plotW <= 0 || plotH <= 0) return;
+
+      let xMin = points[0].minuteOffset;
+      let xMax = points[points.length - 1].minuteOffset;
+      if (xMax - xMin < 2) {
+        xMin -= 1;
+        xMax += 1;
+      }
+      const range = yAxisRange(points.map(p => p.doValue), thresholds, true, { zeroBase: true });
+      const yMin = range.min;
+      const yMax = range.max;
+      const yStep = range.step;
+      const X = offset => padL + ((offset - xMin) / (xMax - xMin)) * plotW;
+      const Y = value => padT + ((yMax - value) / (yMax - yMin)) * plotH;
+      const bins = barBins(points, plotW);
+      const slot = plotW / Math.max(1, bins.length);
+      this.geom = { padL, padR, padT, padB, plotW, plotH, xMin, xMax, yMin, yMax, X, Y, bins };
+
+      /* 网格与 Y 轴 */
+      const decimals = tickDecimals(yStep);
+      ctx.font = '500 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      ctx.lineWidth = 1;
+      for (let v = yMin; v <= yMax + yStep * 0.001; v += yStep) {
+        const y = Y(v);
+        ctx.strokeStyle = cssVar('--chart-grid');
+        ctx.beginPath();
+        ctx.moveTo(padL, Math.round(y) + 0.5);
+        ctx.lineTo(padL + plotW, Math.round(y) + 0.5);
+        ctx.stroke();
+        ctx.fillStyle = cssVar('--chart-axis');
+        ctx.fillText(Number(v).toFixed(decimals), padL - 9, y);
+      }
+
+      /* X 轴时间刻度 */
+      const tickCount = clamp(Math.floor(plotW / 96), 3, 7);
+      const baseTime = d.pondTime;
+      const now = Number(d.elapsedMinutes) || 0;
+      ctx.textBaseline = 'top';
+      for (let i = 0; i <= tickCount; i++) {
+        const offset = xMin + ((xMax - xMin) * i) / tickCount;
+        const x = X(offset);
+        ctx.strokeStyle = cssVar('--chart-grid');
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, padT);
+        ctx.lineTo(Math.round(x) + 0.5, padT + plotH);
+        ctx.stroke();
+        ctx.fillStyle = cssVar('--chart-axis');
+        ctx.textAlign = i === 0 ? 'left' : i === tickCount ? 'right' : 'center';
+        ctx.fillText(baseTime ? FMT.shifted(baseTime, offset - now, true) : Math.round(offset) + 'm',
+          x, padT + plotH + 8);
+      }
+
+      /* 柱子：每个时间分箱一根，宽度不超过相邻柱子的最小间距 */
+      let minGap = slot;
+      for (let i = 1; i < bins.length; i++) {
+        minGap = Math.min(minGap, X(bins[i].center) - X(bins[i - 1].center));
+      }
+      const barW = clamp(Math.min(slot * 0.72, minGap * 0.8), 1, 26);
+      const baseY = padT + plotH;
+      bins.forEach((bin, index) => {
+        const x = X(bin.center);
+        const y = Y(bin.doValue);
+        ctx.fillStyle = statusColor(bin.doValue, thresholds);
+        ctx.globalAlpha = this.hover === index ? 1 : 0.86;
+        ctx.fillRect(x - barW / 2, y, barW, Math.max(1, baseY - y));
+        ctx.globalAlpha = 1;
+      });
+
+      /* 阈值线 */
+      [
+        { value: thresholds.safetyFloor, color: '--chart-floor' },
+        { value: thresholds.onThreshold, color: '--chart-on' },
+        { value: thresholds.offThreshold, color: '--chart-off' }
+      ].forEach(item => {
+        const value = Number(item.value);
+        if (!Number.isFinite(value) || value < yMin || value > yMax) return;
+        const y = Y(value);
+        const color = cssVar(item.color);
+        ctx.save();
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL + plotW, y);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = color;
+        ctx.font = '700 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(FMT.num(value, 2), padL + 6, y);
+      });
+
+      /* 悬停柱高亮 */
+      if (this.hover !== null && bins[this.hover]) {
+        const bin = bins[this.hover];
+        const x = X(bin.center);
+        const y = Y(bin.doValue);
+        ctx.save();
+        ctx.strokeStyle = cssVar('--chart-now');
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(x - barW / 2 - 1, y - 1, barW + 2, baseY - y + 1);
+        ctx.restore();
+      }
+    }
+
+    _onMove(event) {
+      if (!this.geom || !this.data) return;
+      const bins = this.geom.bins || [];
+      if (!bins.length) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      if (px < this.geom.padL || px > this.geom.padL + this.geom.plotW) {
+        this._onLeave();
+        return;
+      }
+      let best = -1;
+      let bestDistance = Infinity;
+      bins.forEach((bin, index) => {
+        const distance = Math.abs(this.geom.X(bin.center) - px);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      });
+      const slot = this.geom.plotW / bins.length;
+      if (best < 0 || bestDistance > Math.max(12, slot * 0.9)) {
+        this._onLeave();
+        return;
+      }
+      if (this.hover !== best) {
+        this.hover = best;
+        this.draw();
+      }
+      this._showTooltip(bins[best]);
+    }
+
+    _showTooltip(bin) {
+      if (!this.tooltip || !this.geom) return;
+      const d = this.data;
+      const now = Number(d.elapsedMinutes) || 0;
+      const timeText = d.pondTime
+        ? FMT.shifted(d.pondTime, bin.minOffset - now, true) +
+          (Math.abs(bin.maxOffset - bin.minOffset) >= 1
+            ? ' – ' + FMT.shifted(d.pondTime, bin.maxOffset - now) : '')
+        : Math.round(bin.minOffset) + ' 分钟';
+      const parts = [];
+      if (bin.count > 1) parts.push(bin.count + ' 个采样');
+      if (Number.isFinite(bin.temperature)) parts.push('水温 ' + FMT.num(bin.temperature, 1) + ' ℃');
+      if (bin.ph > 0) parts.push('pH ' + FMT.num(bin.ph, 2));
+      parts.push('增氧机' + (bin.aeratorOn ? '运行' : '关闭'));
+      this.tooltip.innerHTML =
+        '<div class="tip-time">' + ESC(timeText) + '</div>' +
+        '<div class="tip-row"><span class="tip-dot" style="background:' +
+          statusColor(bin.doValue, d.thresholds || {}) + '"></span>溶氧均值 <strong>' +
+          FMT.num(bin.doValue) + '</strong> mg/L</div>' +
+        '<div class="tip-row tip-muted">' + ESC(parts.join(' · ')) + '</div>';
+      const x = this.geom.X(bin.center);
+      const y = this.geom.Y(bin.doValue);
+      this.tooltip.style.left = clamp(x, 84, this.w - 84) + 'px';
+      this.tooltip.style.top = Math.max(y - 6, 58) + 'px';
+      this.tooltip.classList.add('show');
+    }
+
+    _hideTooltip() {
+      if (this.tooltip) this.tooltip.classList.remove('show');
+    }
+
+    _onLeave() {
+      this._hideTooltip();
+      if (this.hover !== null) {
+        this.hover = null;
+        this.draw();
+      }
+    }
+  }
+
+  /* --------------------------- 散点图（溶氧 × 水温） --------------------------- */
+
+  class DoScatterChart {
+    constructor(canvas, tooltipEl) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.tooltip = tooltipEl;
+      this.emptyEl = canvas.parentElement ? canvas.parentElement.querySelector('.chart-empty') : null;
+      this.data = null;
+      this.geom = null;
+      this.hover = null;
+      this.w = 0;
+      this.h = 0;
+      this._onMove = this._onMove.bind(this);
+      this._onLeave = this._onLeave.bind(this);
+      canvas.addEventListener('pointermove', this._onMove);
+      canvas.addEventListener('pointerleave', this._onLeave);
+      setupCanvas(this);
+      this.resize();
+    }
+
+    setData(data) {
+      this.data = data;
+      this.hover = null;
+      this._hideTooltip();
+      this.draw();
+    }
+
+    clearSelection() {
+      this.hover = null;
+      this._hideTooltip();
+      this.draw();
+    }
+
+    resize() {
+      resizeCanvas(this);
+    }
+
+    destroy() {
+      if (!this.canvas) return;
+      this.canvas.removeEventListener('pointermove', this._onMove);
+      this.canvas.removeEventListener('pointerleave', this._onLeave);
+      teardownCanvas(this);
+    }
+
+    draw() {
+      if (!this.ctx || !this.w || !this.h) return;
+      const ctx = this.ctx;
+      const w = this.w;
+      const h = this.h;
+      ctx.clearRect(0, 0, w, h);
+
+      const points = historyPoints(this.data).filter(p => Number.isFinite(p.temperature));
+      if (this.emptyEl) this.emptyEl.hidden = points.length > 0;
+      if (!points.length) {
+        this.geom = null;
+        return;
+      }
+
+      const d = this.data;
+      const thresholds = d.thresholds || {};
+      const padL = 50;
+      const padR = 22;
+      const padT = 18;
+      const padB = 42;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+      if (plotW <= 0 || plotH <= 0) return;
+
+      let xMin = Math.min.apply(null, points.map(p => p.temperature));
+      let xMax = Math.max.apply(null, points.map(p => p.temperature));
+      if (xMax - xMin < 0.5) {
+        xMin -= 0.5;
+        xMax += 0.5;
+      }
+      const xPad = (xMax - xMin) * 0.08;
+      xMin -= xPad;
+      xMax += xPad;
+
+      const range = yAxisRange(points.map(p => p.doValue), thresholds, true);
+      const yMin = range.min;
+      const yMax = range.max;
+      const yStep = range.step;
+      const X = value => padL + ((value - xMin) / (xMax - xMin)) * plotW;
+      const Y = value => padT + ((yMax - value) / (yMax - yMin)) * plotH;
+      this.geom = { padL, padR, padT, padB, plotW, plotH, xMin, xMax, yMin, yMax, X, Y };
+
+      /* 网格与 Y 轴 */
+      const yDecimals = tickDecimals(yStep);
+      ctx.font = '500 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      ctx.lineWidth = 1;
+      for (let v = yMin; v <= yMax + yStep * 0.001; v += yStep) {
+        const y = Y(v);
+        ctx.strokeStyle = cssVar('--chart-grid');
+        ctx.beginPath();
+        ctx.moveTo(padL, Math.round(y) + 0.5);
+        ctx.lineTo(padL + plotW, Math.round(y) + 0.5);
+        ctx.stroke();
+        ctx.fillStyle = cssVar('--chart-axis');
+        ctx.fillText(Number(v).toFixed(yDecimals), padL - 9, y);
+      }
+
+      /* X 轴水温刻度 */
+      const xStep = niceStep((xMax - xMin) / 5);
+      const xDecimals = tickDecimals(xStep);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let v = Math.ceil(xMin / xStep) * xStep; v <= xMax; v += xStep) {
+        const x = X(v);
+        ctx.strokeStyle = cssVar('--chart-grid');
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, padT);
+        ctx.lineTo(Math.round(x) + 0.5, padT + plotH);
+        ctx.stroke();
+        ctx.fillStyle = cssVar('--chart-axis');
+        ctx.fillText(Number(v).toFixed(xDecimals), x, padT + plotH + 8);
+      }
+      ctx.fillStyle = cssVar('--chart-axis');
+      ctx.textAlign = 'right';
+      ctx.fillText('水温 ℃', padL + plotW, padT + plotH + 24);
+
+      /* 阈值线 */
+      [
+        { value: thresholds.safetyFloor, color: '--chart-floor' },
+        { value: thresholds.onThreshold, color: '--chart-on' },
+        { value: thresholds.offThreshold, color: '--chart-off' }
+      ].forEach(item => {
+        const value = Number(item.value);
+        if (!Number.isFinite(value) || value < yMin || value > yMax) return;
+        const y = Y(value);
+        const color = cssVar(item.color);
+        ctx.save();
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(padL + plotW, y);
+        ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = color;
+        ctx.font = '700 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(FMT.num(value, 2), padL + 6, y);
+      });
+
+      /* 线性趋势线 */
+      const fit = linearFit(points);
+      if (fit) {
+        ctx.save();
+        ctx.strokeStyle = cssVar('--chart-prediction');
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.moveTo(X(xMin), Y(fit.slope * xMin + fit.intercept));
+        ctx.lineTo(X(xMax), Y(fit.slope * xMax + fit.intercept));
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      /* 散点 */
+      points.forEach((p, index) => {
+        const x = X(p.temperature);
+        const y = Y(p.doValue);
+        ctx.beginPath();
+        ctx.arc(x, y, this.hover === index ? 4.6 : 3.2, 0, Math.PI * 2);
+        ctx.fillStyle = statusColor(p.doValue, thresholds);
+        ctx.globalAlpha = this.hover === index ? 1 : 0.82;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+
+      /* 相关性说明 */
+      if (fit) {
+        ctx.fillStyle = cssVar('--chart-axis');
+        ctx.font = '600 10px "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(Math.abs(fit.r) >= 0.1
+          ? '趋势线 r = ' + fit.r.toFixed(2)
+          : '趋势线（相关性较弱）', padL + 6, padT + 4);
+      }
+    }
+
+    _onMove(event) {
+      if (!this.geom || !this.data) return;
+      const points = historyPoints(this.data).filter(p => Number.isFinite(p.temperature));
+      if (!points.length) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      let best = -1;
+      let bestDistance = Infinity;
+      points.forEach((p, index) => {
+        const dx = this.geom.X(p.temperature) - px;
+        const dy = this.geom.Y(p.doValue) - py;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = index;
+        }
+      });
+      if (best < 0 || bestDistance > 16) {
+        this._onLeave();
+        return;
+      }
+      if (this.hover !== best) {
+        this.hover = best;
+        this.draw();
+      }
+      this._showTooltip(points[best]);
+    }
+
+    _showTooltip(point) {
+      if (!this.tooltip || !this.geom) return;
+      const d = this.data;
+      const now = Number(d.elapsedMinutes) || 0;
+      const timeText = d.pondTime
+        ? FMT.shifted(d.pondTime, point.minuteOffset - now, true)
+        : Math.round(point.minuteOffset) + ' 分钟';
+      this.tooltip.innerHTML =
+        '<div class="tip-time">' + ESC(timeText) + '</div>' +
+        '<div class="tip-row"><span class="tip-dot" style="background:' +
+          statusColor(point.doValue, d.thresholds || {}) + '"></span>水温 <strong>' +
+          FMT.num(point.temperature, 1) + '</strong> ℃ · 溶氧 <strong>' +
+          FMT.num(point.doValue) + '</strong> mg/L</div>' +
+        '<div class="tip-row tip-muted">' +
+          (point.ph > 0 ? 'pH ' + FMT.num(point.ph, 2) + ' · ' : '') +
+          '增氧机' + (point.aeratorOn ? '运行' : '关闭') + '</div>';
+      const x = this.geom.X(point.temperature);
+      const y = this.geom.Y(point.doValue);
+      this.tooltip.style.left = clamp(x, 84, this.w - 84) + 'px';
+      this.tooltip.style.top = Math.max(y - 6, 58) + 'px';
+      this.tooltip.classList.add('show');
+    }
+
+    _hideTooltip() {
+      if (this.tooltip) this.tooltip.classList.remove('show');
+    }
+
+    _onLeave() {
+      this._hideTooltip();
+      if (this.hover !== null) {
+        this.hover = null;
+        this.draw();
+      }
+    }
+  }
+
+  /** 最小二乘拟合；样本太少或温度无变化时返回 null。 */
+  function linearFit(points) {
+    const n = points.length;
+    if (n < 3) return null;
+    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, sumYY = 0;
+    points.forEach(p => {
+      sumX += p.temperature;
+      sumY += p.doValue;
+      sumXY += p.temperature * p.doValue;
+      sumXX += p.temperature * p.temperature;
+      sumYY += p.doValue * p.doValue;
+    });
+    const denom = n * sumXX - sumX * sumX;
+    if (Math.abs(denom) < 1e-9) return null;
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+    const rDenom = Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
+    const r = rDenom < 1e-9 ? 0 : (n * sumXY - sumX * sumY) / rDenom;
+    return { slope, intercept, r: clamp(r, -1, 1) };
+  }
+
   window.Aqua = window.Aqua || {};
   window.Aqua.DoChart = DoChart;
+  window.Aqua.DoBarChart = DoBarChart;
+  window.Aqua.DoScatterChart = DoScatterChart;
   window.Aqua.renderPriceBand = renderPriceBand;
   window.Aqua.priceForHour = priceForHour;
 })();

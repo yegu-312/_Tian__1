@@ -24,6 +24,9 @@ public class RealtimeVO {
     /** 水温辅助检测状态；不参与增氧决策。 */
     private TemperatureStatusVO temperatureStatus;
 
+    /** pH 辅助状态；同样不参与增氧决策。 */
+    private PhStatusVO phStatus;
+
     // 定义不可变数据类：三个阈值
     public record Thresholds(double safetyFloor,double onThreshold,double offThreshold){
 

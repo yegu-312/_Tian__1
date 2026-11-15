@@ -26,7 +26,7 @@ public final class DoPredictor {
                     aeratorOn, params, STEP_MINUTES /
                             60.0, NO_NOISE);
             points.add(new DoPoint(startMinuteOffset + i, round2(doValue),
-                    round2(temperature), aeratorOn));
+                    round2(temperature), aeratorOn, round2(Physics.naturalPh(t))));
         }
         return points;
     }

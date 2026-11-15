@@ -133,4 +133,38 @@ class PhysicsTest {
         assertEquals(23.0,at0300,1e-6);
     }
 
+    @Test
+    @DisplayName("pH 日内自然值：白天略高，夜间回到基准")
+    void naturalPhFollowsDaylight(){
+        assertEquals(Physics.DEFAULT_PH, Physics.naturalPh(LocalDateTime.of(2026, 1, 1, 3, 0)), 1e-9);
+        assertTrue(Physics.naturalPh(LocalDateTime.of(2026, 1, 1, 12, 0)) > Physics.DEFAULT_PH);
+    }
+
+    @Test
+    @DisplayName("pH 向自然值缓慢回归，且被限制在 5.5-9.5")
+    void phRelaxesAndClamps(){
+        double afterHour = Physics.nextPh(6.0, 7.5, 1.0, 0.0);
+        assertTrue(afterHour > 6.0 && afterHour < 7.5, "一小时后应部分回归，实际 " + afterHour);
+
+        assertEquals(Physics.PH_MIN, Physics.clampPh(1.0), 1e-9);
+        assertEquals(Physics.PH_MAX, Physics.clampPh(14.0), 1e-9);
+    }
+
+    @Test
+    @DisplayName("换水把 pH 稀释到水源值方向")
+    void exchangeDilutesPhTowardSource(){
+        double half = Physics.exchangePh(9.0, 0.5);
+        assertEquals((9.0 + Physics.SOURCE_WATER_PH) / 2, half, 1e-9);
+        assertEquals(Physics.SOURCE_WATER_PH, Physics.exchangePh(9.0, 1.0), 1e-9);
+    }
+
+    @Test
+    @DisplayName("调水按强度把 pH 拉向目标值")
+    void adjustPhMovesTowardTarget(){
+        double once = Physics.adjustPh(6.6, 7.5, 1);
+        assertTrue(once > 6.6 && once < 7.5, "强度 1 应部分接近目标，实际 " + once);
+        double strong = Physics.adjustPh(6.6, 7.5, 3);
+        assertTrue(strong > once, "强度越高越接近目标");
+    }
+
 }

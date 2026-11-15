@@ -116,4 +116,55 @@ class AuthServiceImplTest {
         assertTrue(e.getMessage().contains("未开放注册"));
         verify(sysUserMapper, never()).insert(any(SysUser.class));
     }
+
+    @Test
+    @DisplayName("删除账号：验证密码后物理删除")
+    void deleteAccountPhysicallyRemovesUser() {
+        SysUser user = existingUser(9L, "operator_a", "secret1");
+        when(sysUserMapper.selectById(9L)).thenReturn(user);
+        when(sysUserMapper.selectCount(any())).thenReturn(2L);
+        when(sysUserMapper.physicalDeleteById(9L)).thenReturn(1);
+
+        authService.deleteAccount(9L, "secret1");
+
+        verify(sysUserMapper).physicalDeleteById(9L);
+    }
+
+    @Test
+    @DisplayName("删除账号：当前密码错误时拒绝")
+    void deleteAccountRejectsWrongPassword() {
+        SysUser user = existingUser(9L, "operator_a", "secret1");
+        when(sysUserMapper.selectById(9L)).thenReturn(user);
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> authService.deleteAccount(9L, "wrong-password"));
+        assertTrue(e.getMessage().contains("当前密码不正确"));
+        verify(sysUserMapper, never()).physicalDeleteById(any());
+    }
+
+    @Test
+    @DisplayName("删除账号：至少保留一个可用账号")
+    void deleteAccountRejectsLastAccount() {
+        SysUser user = existingUser(9L, "operator_a", "secret1");
+        when(sysUserMapper.selectById(9L)).thenReturn(user);
+        when(sysUserMapper.selectCount(any())).thenReturn(1L);
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> authService.deleteAccount(9L, "secret1"));
+        assertTrue(e.getMessage().contains("至少保留一个"));
+        verify(sysUserMapper, never()).physicalDeleteById(any());
+    }
+
+    private static SysUser existingUser(Long id, String username, String password) {
+        String salt = PasswordHasher.newSalt();
+        SysUser user = new SysUser();
+        user.setId(id);
+        user.setUsername(username);
+        user.setSalt(salt);
+        user.setPasswordHash(PasswordHasher.hash(password, salt));
+        user.setDisplayName(username);
+        user.setRole("operator");
+        user.setEnabled(1);
+        return user;
+    }
 }

@@ -27,4 +27,7 @@ public class PondConfig extends  BaseEntity {
     private BigDecimal consumeCoefficient;
     private BigDecimal aeratorRate;//产氧率
 
+    /** 增氧机额定功率（kW），用于电费估算 */
+    private BigDecimal aeratorPowerKw;
+
 }

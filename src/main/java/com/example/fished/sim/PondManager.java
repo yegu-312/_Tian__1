@@ -2,10 +2,16 @@ package com.example.fished.sim;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.fished.common.BusinessException;
+import com.example.fished.entity.AeratorLog;
 import com.example.fished.entity.AeratorStrategy;
+import com.example.fished.entity.Alert;
+import com.example.fished.entity.DoSample;
 import com.example.fished.entity.PondConfig;
 import com.example.fished.entity.SimSetting;
+import com.example.fished.mapper.AeratorLogMapper;
 import com.example.fished.mapper.AeratorStrategyMapper;
+import com.example.fished.mapper.AlertMapper;
+import com.example.fished.mapper.DoSampleMapper;
 import com.example.fished.mapper.PondConfigMapper;
 import com.example.fished.mapper.SimSettingMapper;
 import com.example.fished.sim.event.SimEvent;
@@ -37,16 +43,25 @@ public class PondManager {
     private final PondConfigMapper pondConfigMapper;
     private final AeratorStrategyMapper strategyMapper;
     private final SimSettingMapper settingMapper;
+    private final AlertMapper alertMapper;
+    private final AeratorLogMapper aeratorLogMapper;
+    private final DoSampleMapper doSampleMapper;
 
     private final Map<Long, SimulationEngine> engines = new ConcurrentHashMap<>();
     private final Map<Long, String> pondNames = new ConcurrentHashMap<>();
 
     public PondManager(PondConfigMapper pondConfigMapper,
                        AeratorStrategyMapper strategyMapper,
-                       SimSettingMapper settingMapper) {
+                       SimSettingMapper settingMapper,
+                       AlertMapper alertMapper,
+                       AeratorLogMapper aeratorLogMapper,
+                       DoSampleMapper doSampleMapper) {
         this.pondConfigMapper = pondConfigMapper;
         this.strategyMapper = strategyMapper;
         this.settingMapper = settingMapper;
+        this.alertMapper = alertMapper;
+        this.aeratorLogMapper = aeratorLogMapper;
+        this.doSampleMapper = doSampleMapper;
     }
 
     @PostConstruct
@@ -167,6 +182,39 @@ public class PondManager {
         register(pondConfigMapper.selectById(pondId));
         log.info("新增鱼塘 #{}（{}），已创建独立策略、系统设置与仿真引擎", pondId, name);
         return PondVO.from(pondConfigMapper.selectById(pondId), requireEngine(pondId).getSnapshot());
+    }
+
+    /**
+     * 删除一个鱼塘及其策略、设置、告警、采样与增氧日志。
+     * 至少保留一个鱼塘；操作日志不删除，保留审计记录。
+     */
+    @Transactional
+    public synchronized void deletePond(Long pondId) {
+        if (pondId == null) {
+            throw new BusinessException("鱼塘编号不能为空");
+        }
+        PondConfig config = pondConfigMapper.selectById(pondId);
+        if (config == null) {
+            throw new BusinessException("鱼塘不存在：#" + pondId);
+        }
+        if (listConfigs().size() <= 1) {
+            throw new BusinessException("至少保留一个鱼塘，当前鱼塘无法删除");
+        }
+        if (engines.containsKey(pondId) && engines.size() <= 1) {
+            throw new BusinessException("至少保留一个运行中的鱼塘，当前鱼塘无法删除");
+        }
+
+        String name = config.getPondName();
+        alertMapper.delete(new LambdaQueryWrapper<Alert>().eq(Alert::getPondId, pondId));
+        aeratorLogMapper.delete(new LambdaQueryWrapper<AeratorLog>().eq(AeratorLog::getPondId, pondId));
+        doSampleMapper.delete(new LambdaQueryWrapper<DoSample>().eq(DoSample::getPondId, pondId));
+        strategyMapper.delete(new LambdaQueryWrapper<AeratorStrategy>().eq(AeratorStrategy::getPondId, pondId));
+        settingMapper.delete(new LambdaQueryWrapper<SimSetting>().eq(SimSetting::getPondId, pondId));
+        pondConfigMapper.deleteById(pondId);
+
+        engines.remove(pondId);
+        pondNames.remove(pondId);
+        log.info("已删除鱼塘 #{}（{}）及其策略、设置、告警、采样与增氧日志", pondId, name);
     }
 
     private void register(PondConfig config) {

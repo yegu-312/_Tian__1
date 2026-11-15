@@ -20,6 +20,7 @@ public class PondConfigVO {
     private BigDecimal produceCoefficient;
     private BigDecimal consumeCoefficient;
     private BigDecimal aeratorRate;
+    private BigDecimal aeratorPowerKw;
 
     public static PondConfigVO from(PondConfig entity){
         PondConfigVO vo = new PondConfigVO();

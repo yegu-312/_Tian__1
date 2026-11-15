@@ -18,6 +18,7 @@
     aerator: { label: '增氧策略', title: '增氧策略', sub: '自动阈值控制与手动增氧开关' },
     ponds: { label: '鱼塘管理', title: '鱼塘管理', sub: '新增鱼塘并在多塘之间切换、对比' },
     electricity: { label: '电价管理', title: '电价管理', sub: '峰平谷时段必须完整覆盖 0 - 24 点' },
+    history: { label: '历史记录', title: '历史记录', sub: '按鱼塘时间回看溶氧、水温与增氧机状态' },
     alerts: { label: '告警中心', title: '告警中心', sub: '查看告警等级并确认处理' },
     logs: { label: '系统日志', title: '系统日志', sub: '人的操作记录与增氧机的动作记录' },
     settings: { label: '系统设置', title: '系统设置', sub: '仿真步长、账号安全与系统重置' }
@@ -39,6 +40,7 @@
     strategy: null,
     pondConfig: null,
     electricity: null,
+    electricityCost: null,
     settings: null,
     pollInterval: 2000,
     pollTimer: null,
@@ -51,6 +53,15 @@
       showThresholds: true,
       showTemperature: true
     },
+    history: {
+      preset: '24h',
+      basePreset: '24h',
+      chartType: 'line',
+      from: '',
+      to: '',
+      data: null,
+      requestId: 0
+    },
     alerts: { page: 1, size: 10, level: '', status: '', alertType: '', pondId: '' },
     logs: {
       tab: 'operation',
@@ -62,6 +73,7 @@
   let doChart = null;
   let compareChartA = null;
   let compareChartB = null;
+  let historyChart = null;
   let extrasTimer = null;
   let badgeTimer = null;
 
@@ -170,6 +182,7 @@
       if (doChart) doChart.draw();
       if (compareChartA) compareChartA.draw();
       if (compareChartB) compareChartB.draw();
+      if (historyChart) historyChart.draw();
     });
     window.addEventListener('hashchange', handleRoute);
     document.addEventListener('visibilitychange', function () {
@@ -368,6 +381,9 @@
     state.pondConfig = null;
     state.settings = null;
     state.compareData = [];
+    state.history.data = null;
+    state.history.from = '';
+    state.history.to = '';
     if (doChart) doChart.setData(null);
     if (compareChartA) compareChartA.setData(null);
     if (compareChartB) compareChartB.setData(null);
@@ -542,6 +558,11 @@
     try { el('sidebar').classList.remove('open'); } catch (e) { /* ignore */ }
     if (el('sidebarScrim')) el('sidebarScrim').hidden = true;
 
+    if (route !== 'history' && historyChart) {
+      historyChart.destroy();
+      historyChart = null;
+    }
+
     switch (route) {
       case 'overview':
         pollRealtime();
@@ -562,6 +583,9 @@
         break;
       case 'electricity':
         loadElectricityView();
+        break;
+      case 'history':
+        loadHistoryView();
         break;
       case 'alerts':
         loadAlertsView();
@@ -633,7 +657,7 @@
       pollRealtime();
       return;
     }
-    ['pondTime', 'currentDo', 'temperature', 'aeratorOn', 'paused', 'speed', 'elapsedMinutes'].forEach(function (key) {
+    ['pondTime', 'currentDo', 'temperature', 'ph', 'phStatus', 'aeratorOn', 'paused', 'speed', 'elapsedMinutes'].forEach(function (key) {
       if (snapshot[key] !== undefined) state.realtime[key] = snapshot[key];
     });
     applyRealtime(state.realtime);
@@ -676,7 +700,7 @@
         '<div>' +
           '<p class="eyebrow">实时监控 · 多鱼塘对比</p>' +
           '<h1>鱼塘运行总览</h1>' +
-          '<p class="page-sub">溶氧、水温与增氧机的实时状态<span class="dot-sep">·</span><span id="overviewUpdated">等待首次刷新</span></p>' +
+          '<p class="page-sub">溶氧、水温、pH 与增氧机的实时状态<span class="dot-sep">·</span><span id="overviewUpdated">等待首次刷新</span></p>' +
         '</div>' +
         '<div class="page-actions">' +
           '<label class="inline-field"><span>自动刷新</span>' +
@@ -705,7 +729,7 @@
           '<div class="metric-head"><span>辅助水温</span><span class="metric-ico">' + icon('thermometer') + '</span></div>' +
           '<div class="metric-value"><span id="mTempValue">--</span><small>℃</small></div>' +
           '<div class="metric-foot"><span class="badge neutral" id="mTempStatus">等待数据</span><span class="muted" id="mSaturation">饱和溶氧 --</span></div>' +
-          '<div class="metric-extra"><span id="mTempRange">适宜 18–32 ℃</span><span id="mTempTrend">窗口 --</span></div>' +
+          '<div class="metric-extra"><span id="mTempRange">适宜 18–32 ℃</span><span id="mTempTrend">窗口 --</span><span id="mPhLine">pH --</span></div>' +
         '</article>' +
         '<article class="metric-card" data-tone="blue">' +
           '<div class="metric-head"><span>增氧机</span><span class="metric-ico">' + icon('fan') + '</span></div>' +
@@ -1259,6 +1283,7 @@
     }
     const tone = statusDesc === '适宜' ? 'good' : (statusDesc === '偏高' || statusDesc === '偏低') ? 'warn' : 'neutral';
     setBadge('mTempStatus', statusDesc || '等待数据', tone);
+    updatePhOverview(data);
 
     const values = (data.history || [])
       .map(function (point) { return Number(point.temperature); })
@@ -1279,6 +1304,29 @@
     }
     setText('mTempTrend', '窗口 ' + fmt.num(min, 1) + '–' + fmt.num(max, 1) + '℃ · ' + trend);
   }
+
+  function updatePhOverview(data) {
+    const line = el('mPhLine');
+    if (!line) return;
+    const guard = data.phStatus || {};
+    const ph = Number(data.ph);
+    if (!Number.isFinite(ph)) {
+      line.textContent = 'pH --';
+      return;
+    }
+    const desc = guard.statusDesc || PhFallback.statusDesc(ph);
+    line.textContent = 'pH ' + fmt.num(ph, 2) + ' · ' + desc
+      + '（' + fmt.num(guard.comfortMin || 6.5, 1) + '–' + fmt.num(guard.comfortMax || 8.5, 1) + '）';
+    line.title = 'pH 为辅助水质指标，不参与自动增氧决策';
+  }
+
+  const PhFallback = {
+    statusDesc: function (ph) {
+      if (ph < 6.5) return '偏酸';
+      if (ph > 8.5) return '偏碱';
+      return '适宜';
+    }
+  };
 
   function updateDoMeter(data, status) {
     const meter = el('mDoMeter');
@@ -1804,6 +1852,9 @@
               fieldNumber('produceCoefficient', '产氧系数', config.produceCoefficient, 0, 5, 0.01, '白天产氧强度，0 - 5') +
               fieldNumber('consumeCoefficient', '耗氧系数', config.consumeCoefficient, 0, 5, 0.01, '温度越高耗氧越快，0 - 5') +
               fieldNumber('aeratorRate', '增氧速率', config.aeratorRate, 0, 10, 0.01, '增氧机满负荷补氧强度，0 - 10') +
+              fieldNumber('aeratorPowerKw', '增氧机功率（kW）',
+                config.aeratorPowerKw == null ? '1.5' : config.aeratorPowerKw,
+                0.01, 100, 0.01, '用于电费估算，不影响溶氧仿真') +
             '</div>' +
             '<div class="form-actions">' +
               '<button class="btn ghost" type="button" id="pondResetBtn">还原</button>' +
@@ -1886,7 +1937,8 @@
           doMax: Number(form.elements.namedItem('doMax').value),
           produceCoefficient: Number(form.elements.namedItem('produceCoefficient').value),
           consumeCoefficient: Number(form.elements.namedItem('consumeCoefficient').value),
-          aeratorRate: Number(form.elements.namedItem('aeratorRate').value)
+          aeratorRate: Number(form.elements.namedItem('aeratorRate').value),
+          aeratorPowerKw: Number(form.elements.namedItem('aeratorPowerKw').value)
         };
 
         const validation = validatePondPayload(payload);
@@ -1918,7 +1970,8 @@
       doMax: '12',
       produceCoefficient: '0.65',
       consumeCoefficient: '0.10',
-      aeratorRate: '1.4'
+      aeratorRate: '1.4',
+      aeratorPowerKw: '1.5'
     },
     muggy: {
       temperatureMode: 'diurnal',
@@ -1928,7 +1981,8 @@
       doMax: '10',
       produceCoefficient: '0.45',
       consumeCoefficient: '0.22',
-      aeratorRate: '1.8'
+      aeratorRate: '1.8',
+      aeratorPowerKw: '2.2'
     },
     winter: {
       temperatureMode: 'diurnal',
@@ -1938,7 +1992,8 @@
       doMax: '14',
       produceCoefficient: '0.35',
       consumeCoefficient: '0.035',
-      aeratorRate: '1.2'
+      aeratorRate: '1.2',
+      aeratorPowerKw: '1.1'
     }
   };
 
@@ -1952,7 +2007,8 @@
       doMax: config.doMax,
       produceCoefficient: config.produceCoefficient,
       consumeCoefficient: config.consumeCoefficient,
-      aeratorRate: config.aeratorRate
+      aeratorRate: config.aeratorRate,
+      aeratorPowerKw: config.aeratorPowerKw == null ? 1.5 : config.aeratorPowerKw
     };
     Object.keys(values).forEach(function (key) {
       const input = form.elements.namedItem(key);
@@ -1971,7 +2027,8 @@
       [payload.doMax, 0, Infinity, '溶氧量程上限不能为负'],
       [payload.produceCoefficient, 0, 5, '产氧系数需在 0 - 5'],
       [payload.consumeCoefficient, 0, 5, '耗氧系数需在 0 - 5'],
-      [payload.aeratorRate, 0, 10, '增氧速率需在 0 - 10']
+      [payload.aeratorRate, 0, 10, '增氧速率需在 0 - 10'],
+      [payload.aeratorPowerKw, 0.01, 100, '增氧机功率需在 0.01 - 100 kW']
     ];
     for (let i = 0; i < checks.length; i++) {
       const value = checks[i][0];
@@ -2300,8 +2357,13 @@
     view.innerHTML = ui.loadingCard('正在读取分时电价…');
 
     try {
-      const data = await api.electricity.get();
+      const results = await Promise.all([
+        api.electricity.get(),
+        api.electricity.cost(state.activePondId).catch(function () { return null; })
+      ]);
+      const data = results[0];
       state.electricity = data;
+      state.electricityCost = results[1];
       priceRows = (data.periods || []).map(function (period) {
         return {
           periodType: fmt.normalizePeriodType(period.periodType),
@@ -2314,6 +2376,7 @@
       view.innerHTML = electricityTemplate(data);
       bindElectricityView();
       renderPriceRows();
+      renderElectricityCost(state.electricityCost);
       updatePriceQuick(state.realtime ? state.realtime.pondTime : null);
     } catch (error) {
       view.innerHTML = ui.errorCard(errorMessage(error));
@@ -2328,10 +2391,16 @@
           '<p class="page-sub">所有时段首尾相接覆盖 0 - 24 点；当前鱼塘时间会跟随时钟变化。</p>' +
         '</div>' +
         '<div class="page-actions">' +
+          '<button class="btn ghost" id="costRefresh" type="button">' + icon('refresh') + '刷新电费</button>' +
           '<button class="btn ghost" id="priceAdd" type="button">' + icon('plus') + '拆分添加</button>' +
           '<button class="btn ghost" id="priceFill" type="button">补齐空档</button>' +
           '<button class="btn primary" id="priceSave" type="button">' + icon('check') + '保存电价</button>' +
         '</div>' +
+      '</div>' +
+      '<div class="cost-grid">' +
+        costTileMarkup('costToday', '今日电费') +
+        costTileMarkup('cost7', '近 7 天电费') +
+        costTileMarkup('cost30', '近 30 天电费') +
       '</div>' +
       '<div class="two-col">' +
         '<article class="card">' +
@@ -2363,11 +2432,36 @@
             '<div class="price-bars" id="priceBars"></div>' +
             '<div class="price-legend" style="margin-top:22px"><span><i class="peak"></i>峰</span><span><i class="flat"></i>平</span><span><i class="valley"></i>谷</span></div>' +
           '</article>' +
+          '<article class="card cost-card">' +
+            '<div class="card-head">' +
+              '<div><h3>增氧机用电</h3><p id="costMeta">按鱼塘时间与分时电价估算</p></div>' +
+              '<span class="badge neutral" id="costPowerBadge">-- kW</span>' +
+            '</div>' +
+            '<div class="cost-now" id="costNow">--</div>' +
+            '<div class="cost-breakdown" id="costBreakdown"></div>' +
+            '<div class="cost-daily" id="costDaily"></div>' +
+          '</article>' +
         '</aside>' +
       '</div>';
   }
 
+  function costTileMarkup(id, label) {
+    return '<article class="cost-tile">' +
+        '<span class="cost-label">' + esc(label) + '</span>' +
+        '<strong class="cost-value" id="' + id + 'Cost">--</strong>' +
+        '<span class="cost-sub" id="' + id + 'Sub">--</span>' +
+        '<span class="cost-foot" id="' + id + 'Break">--</span>' +
+      '</article>';
+  }
+
   function bindElectricityView() {
+    const costRefreshBtn = el('costRefresh');
+    if (costRefreshBtn) {
+      costRefreshBtn.addEventListener('click', function () {
+        busy(costRefreshBtn, function () { return refreshElectricityCost(false); });
+      });
+    }
+
     const addBtn = el('priceAdd');
     if (addBtn) {
       addBtn.addEventListener('click', function () {
@@ -2451,6 +2545,7 @@
             });
             renderPriceRows();
             updatePriceQuick(state.realtime ? state.realtime.pondTime : null);
+            refreshElectricityCost(true);
             ui.toast('分时电价已保存，共 ' + priceRows.length + ' 个时段', 'success');
           } catch (error) {
             ui.toast(errorMessage(error), 'error', '保存失败');
@@ -2602,6 +2697,97 @@
     setText('priceHour', fmt.pad(Math.floor(hour)) + ':00 前后');
   }
 
+  async function refreshElectricityCost(silent) {
+    try {
+      const cost = await api.electricity.cost(state.activePondId);
+      state.electricityCost = cost;
+      renderElectricityCost(cost);
+      if (!silent) ui.toast('电费统计已刷新', 'success');
+    } catch (error) {
+      if (!silent) ui.toast(errorMessage(error), 'error', '刷新电费失败');
+    }
+  }
+
+  function renderElectricityCost(cost) {
+    const zero = { energyKwh: 0, cost: 0, runtimeMinutes: 0, peakCost: 0, flatCost: 0, valleyCost: 0 };
+    const today = (cost && cost.today) || zero;
+    const week = (cost && cost.last7Days) || zero;
+    const month = (cost && cost.last30Days) || zero;
+
+    fillCostTile('costToday', today, cost);
+    fillCostTile('cost7', week, cost);
+    fillCostTile('cost30', month, cost);
+
+    const meta = el('costMeta');
+    if (meta) {
+      meta.textContent = cost
+        ? (cost.pondName || '当前鱼塘') + ' · ' + fmt.dateTime(cost.pondTime) + ' 鱼塘时间'
+        : '电费统计暂不可用';
+    }
+    setText('costPowerBadge', cost ? fmt.num(cost.powerKw, 2) + ' kW' : '-- kW');
+
+    const now = el('costNow');
+    if (now) {
+      if (!cost) {
+        now.innerHTML = '<span class="muted">暂无电费数据</span>';
+      } else {
+        const periodText = cost.currentPeriodDesc
+          ? cost.currentPeriodDesc + '段 ' + fmt.num(cost.currentPrice, 2) + ' 元/kWh'
+          : '当前小时未配置电价';
+        now.innerHTML =
+          '<span class="badge ' + (cost.aeratorOn ? 'good' : 'neutral') + '">' +
+            (cost.aeratorOn ? '增氧中' : '已停机') + '</span>' +
+          '<span>' + esc(periodText) + '</span>' +
+          '<span class="muted">今日运行 ' + fmt.elapsed(today.runtimeMinutes) + '</span>';
+      }
+    }
+
+    const breakdown = el('costBreakdown');
+    if (breakdown) {
+      breakdown.innerHTML = cost
+        ? '<span class="cost-break-title">近 7 天构成</span>' +
+          '<span><i class="peak"></i>峰 ' + costMoney(week.peakCost) + '</span>' +
+          '<span><i class="flat"></i>平 ' + costMoney(week.flatCost) + '</span>' +
+          '<span><i class="valley"></i>谷 ' + costMoney(week.valleyCost) + '</span>'
+        : '';
+    }
+
+    const daily = el('costDaily');
+    if (!daily) return;
+    if (!cost || !cost.daily || !cost.daily.length) {
+      daily.innerHTML = '<div class="empty">暂无用电记录</div>';
+      return;
+    }
+    const values = cost.daily.map(function (item) { return Number(item.cost) || 0; });
+    const max = Math.max(0.01, Math.max.apply(null, values));
+    daily.innerHTML = '<div class="cost-daily-head"><span>最近 7 天</span><span>电费 · 时长</span></div>' +
+      cost.daily.map(function (item) {
+        const value = Number(item.cost) || 0;
+        const width = value > 0 ? Math.max(2, pct(value, max)) : 0;
+        return '<div class="cost-day" title="' + esc(item.date) + ' · ' + fmt.num(item.energyKwh, 2) + ' kWh">' +
+          '<span class="cost-day-label">' + esc(item.date ? item.date.slice(5) : '--') + '</span>' +
+          '<span class="cost-day-track"><i style="width:' + width + '%"></i></span>' +
+          '<strong>' + costMoney(value) + '</strong>' +
+          '<small>' + fmt.elapsed(item.runtimeMinutes) + '</small>' +
+        '</div>';
+      }).join('');
+  }
+
+  function fillCostTile(prefix, summary, cost) {
+    setText(prefix + 'Cost', cost ? costMoney(summary.cost) : '--');
+    setText(prefix + 'Sub', cost
+      ? fmt.num(summary.energyKwh, 2) + ' kWh · ' + fmt.elapsed(summary.runtimeMinutes)
+      : '--');
+    setText(prefix + 'Break', cost
+      ? '峰 ' + costMoney(summary.peakCost) + ' · 平 ' + costMoney(summary.flatCost) +
+        ' · 谷 ' + costMoney(summary.valleyCost)
+      : '--');
+  }
+
+  function costMoney(value) {
+    return '¥' + fmt.num(Number(value) || 0, 2);
+  }
+
   function renderPriceBars() {
     const container = el('priceBars');
     if (!container) return;
@@ -2631,6 +2817,545 @@
 
   function periodLabel(type) {
     return type === 'peak' ? '峰' : type === 'valley' ? '谷' : '平';
+  }
+
+  /* ------------------------------ 历史记录页 ------------------------------ */
+
+  const HISTORY_PRESETS = { '24h': 1, '7d': 7, '30d': 30 };
+
+  async function loadHistoryView() {
+    const view = el('view-history');
+    if (!view) return;
+
+    if (historyChart) {
+      historyChart.destroy();
+      historyChart = null;
+    }
+    state.history.requestId += 1;
+
+    if (state.history.preset !== 'custom') {
+      const bounds = historyPresetBounds(state.history.preset);
+      if (bounds) {
+        state.history.from = bounds.from;
+        state.history.to = bounds.to;
+      }
+    }
+
+    view.innerHTML = historyTemplate();
+    bindHistoryView();
+    createHistoryChart();
+    await fetchHistoryData();
+  }
+
+  function historyChartClass(type) {
+    if (type === 'bar') return window.Aqua.DoBarChart;
+    if (type === 'scatter') return window.Aqua.DoScatterChart;
+    return window.Aqua.DoChart;
+  }
+
+  function createHistoryChart() {
+    if (historyChart) {
+      historyChart.destroy();
+      historyChart = null;
+    }
+    const canvas = el('historyChart');
+    const Type = historyChartClass(state.history.chartType);
+    if (!canvas || !Type) return;
+    if (state.history.chartType === 'line') {
+      historyChart = new Type(canvas, el('historyTip'), {
+        showPrediction: false,
+        showThresholds: true,
+        showTemperature: true,
+        axisWithDate: true
+      });
+      historyChart.onRangeSelect = function (selection) {
+        zoomHistoryRange(selection);
+      };
+    } else {
+      historyChart = new Type(canvas, el('historyTip'));
+    }
+    markHistoryChartType(state.history.chartType);
+  }
+
+  function markHistoryChartType(type) {
+    const box = el('historyChartTypes');
+    if (box) {
+      Array.prototype.forEach.call(box.querySelectorAll('[data-chart-type]'), function (button) {
+        const active = button.dataset.chartType === type;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+    const title = el('historyChartTitle');
+    if (title) {
+      title.textContent = type === 'bar' ? '溶氧柱状分布'
+        : type === 'scatter' ? '溶氧 × 水温散点' : '溶氧 / 水温趋势';
+    }
+    const hint = el('historyChartHint');
+    if (hint) {
+      hint.innerHTML = type === 'line'
+        ? icon('search') + '拖拽框选 · 放大时段'
+        : type === 'bar'
+          ? icon('info') + '按时间分箱聚合 · 悬停查看均值'
+          : icon('info') + '每个点代表一次采样，虚线为趋势';
+    }
+    const legend = el('historyLegend');
+    if (legend) {
+      Array.prototype.forEach.call(legend.querySelectorAll('[data-chart-legend]'), function (item) {
+        const kind = item.dataset.chartLegend;
+        const show = kind === 'prediction' ? type === 'scatter' : kind === 'temp' ? type === 'line' : type === 'line';
+        item.hidden = !show;
+      });
+    }
+  }
+
+  function historyNow() {
+    if (state.realtime && state.realtime.pondTime) return state.realtime.pondTime;
+    return state.history.data && state.history.data.currentPondTime
+      ? state.history.data.currentPondTime
+      : null;
+  }
+
+  function historyShift(value, minutes) {
+    const p = fmt.parseLocal(value);
+    if (!p) return null;
+    const date = new Date(p.y, p.mo - 1, p.d, p.h, p.mi, p.s || 0);
+    date.setMinutes(date.getMinutes() + Number(minutes || 0));
+    return date;
+  }
+
+  function historyIso(value) {
+    const date = value instanceof Date ? value : historyShift(value, 0);
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return date.getFullYear() + '-' + fmt.pad(date.getMonth() + 1) + '-' + fmt.pad(date.getDate()) +
+      'T' + fmt.pad(date.getHours()) + ':' + fmt.pad(date.getMinutes()) + ':' + fmt.pad(date.getSeconds());
+  }
+
+  function historyMinutesBetween(from, to) {
+    const a = fmt.parseLocal(from);
+    const b = fmt.parseLocal(to);
+    if (!a || !b) return 0;
+    return (Date.UTC(b.y, b.mo - 1, b.d, b.h, b.mi, b.s || 0) -
+      Date.UTC(a.y, a.mo - 1, a.d, a.h, a.mi, a.s || 0)) / 60000;
+  }
+
+  function historyPresetBounds(preset) {
+    const current = historyNow();
+    const days = HISTORY_PRESETS[preset];
+    if (!current || !days) return null;
+    return {
+      from: historyIso(historyShift(current, -days * 24 * 60)),
+      to: historyIso(current)
+    };
+  }
+
+  function historyDuration(minutes) {
+    const value = Number(minutes) || 0;
+    if (value < 60) return Math.round(value) + ' 分钟';
+    return fmt.elapsed(value);
+  }
+
+  function historyTemplate() {
+    const preset = state.history.preset;
+    const fromValue = fmt.dateInputValue(state.history.from);
+    const toValue = fmt.dateInputValue(state.history.to);
+
+    return '<div class="page-head">' +
+        '<div>' +
+          '<p class="eyebrow">历史记录 · HISTORY</p>' +
+          '<h1>溶氧、水温与 pH 历史</h1>' +
+          '<p class="page-sub">按鱼塘仿真时间回看采样，支持预设区间、自定义时间和拖拽放大；pH 为辅助指标。</p>' +
+        '</div>' +
+        '<div class="page-actions">' +
+          '<span class="badge neutral" id="historyRetention">保留 -- 天</span>' +
+          '<button class="btn ghost" id="historyRefresh" type="button">' + icon('refresh') + '刷新</button>' +
+          '<button class="btn primary" id="historyExport" type="button">' + icon('list') + '导出 CSV</button>' +
+        '</div>' +
+      '</div>' +
+      '<article class="card history-toolbar">' +
+        '<div class="history-presets" id="historyPresets">' +
+          '<button class="chip' + (preset === '24h' ? ' active' : '') + '" type="button" data-preset="24h" aria-pressed="' + (preset === '24h') + '">近 24 小时</button>' +
+          '<button class="chip' + (preset === '7d' ? ' active' : '') + '" type="button" data-preset="7d" aria-pressed="' + (preset === '7d') + '">近 7 天</button>' +
+          '<button class="chip' + (preset === '30d' ? ' active' : '') + '" type="button" data-preset="30d" aria-pressed="' + (preset === '30d') + '">近 30 天</button>' +
+          '<span class="history-divider" aria-hidden="true"></span>' +
+          '<label class="history-field"><span>开始</span>' +
+            '<input class="input" type="datetime-local" id="historyFrom" value="' + esc(fromValue) + '" step="60">' +
+          '</label>' +
+          '<label class="history-field"><span>结束</span>' +
+            '<input class="input" type="datetime-local" id="historyTo" value="' + esc(toValue) + '" step="60">' +
+          '</label>' +
+          '<button class="btn soft sm" id="historyApply" type="button">' + icon('check') + '应用</button>' +
+        '</div>' +
+        '<p class="history-hint" id="historyHint">数据按鱼塘时间保存，超出保留期的采样会自动清理。</p>' +
+        '<div class="history-meta">' +
+          '<span id="historyRangeLabel">--</span>' +
+          '<span id="historyMeta">--</span>' +
+        '</div>' +
+      '</article>' +
+      '<div class="metrics history-metrics">' +
+        '<article class="metric-card" data-tone="aqua">' +
+          '<div class="metric-head"><span>溶氧均值</span><span class="metric-ico">' + icon('droplet') + '</span></div>' +
+          '<div class="metric-value"><span id="historyAvgDo">--</span><small>mg/L</small></div>' +
+          '<div class="metric-foot"><span class="muted" id="historyDoRange">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="amber">' +
+          '<div class="metric-head"><span>水温均值</span><span class="metric-ico">' + icon('thermometer') + '</span></div>' +
+          '<div class="metric-value"><span id="historyAvgTemp">--</span><small>℃</small></div>' +
+          '<div class="metric-foot"><span class="muted" id="historyTempRange">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="green">' +
+          '<div class="metric-head"><span>pH 均值</span><span class="metric-ico">' + icon('droplet') + '</span></div>' +
+          '<div class="metric-value"><span id="historyAvgPh">--</span><small>pH</small></div>' +
+          '<div class="metric-foot"><span class="muted" id="historyPhRange">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="blue">' +
+          '<div class="metric-head"><span>增氧时长</span><span class="metric-ico">' + icon('fan') + '</span></div>' +
+          '<div class="metric-value metric-text"><span id="historyAerator">--</span></div>' +
+          '<div class="metric-foot"><span class="muted" id="historyAeratorFoot">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="violet">' +
+          '<div class="metric-head"><span>低溶氧时长</span><span class="metric-ico">' + icon('alert-triangle') + '</span></div>' +
+          '<div class="metric-value metric-text"><span id="historyLowDo">--</span></div>' +
+          '<div class="metric-foot"><span class="muted" id="historyLowDoFoot">--</span></div>' +
+        '</article>' +
+      '</div>' +
+      '<div class="history-visual-grid">' +
+        '<article class="card chart-card history-chart-card">' +
+          '<div class="card-head">' +
+            '<div class="card-title"><h3 id="historyChartTitle">溶氧 / 水温趋势</h3><p id="historyChartSub">加载中…</p></div>' +
+            '<div class="chart-controls">' +
+              '<div class="chart-type-switch" id="historyChartTypes" role="group" aria-label="图表类型">' +
+                '<button class="chip" type="button" data-chart-type="line">折线</button>' +
+                '<button class="chip" type="button" data-chart-type="bar">柱状</button>' +
+                '<button class="chip" type="button" data-chart-type="scatter">散点</button>' +
+              '</div>' +
+              '<span class="chart-drag-hint" id="historyChartHint">' + icon('search') + '拖拽框选 · 放大时段</span>' +
+              '<button class="btn ghost sm" id="historyResetZoom" type="button">' + icon('refresh') + '重置视图</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="chart-legend" id="historyLegend">' +
+            '<span class="lg"><i class="line history"></i>历史溶氧</span>' +
+            '<span class="lg" data-chart-legend="temp"><i class="line temperature"></i>水温（辅助）</span>' +
+            '<span class="lg"><i class="line floor"></i>安全下限</span>' +
+            '<span class="lg"><i class="line on"></i>开机阈值</span>' +
+            '<span class="lg"><i class="line off"></i>关机阈值</span>' +
+            '<span class="lg" data-chart-legend="aerator"><i class="swatch aerator"></i>增氧时段</span>' +
+            '<span class="lg" data-chart-legend="prediction" hidden><i class="line prediction"></i>趋势线</span>' +
+          '</div>' +
+          '<div class="chart-wrap history-chart-wrap">' +
+            '<canvas id="historyChart" role="img" aria-label="历史溶氧图表"></canvas>' +
+            '<div class="chart-tooltip" id="historyTip"></div>' +
+            '<div class="chart-empty" id="historyEmpty">当前时间范围没有采样</div>' +
+          '</div>' +
+        '</article>' +
+        '<article class="card donut-card">' +
+          '<div class="card-head">' +
+            '<div class="card-title"><h3>区间构成</h3><p>增氧与低氧时长的占比</p></div>' +
+          '</div>' +
+          '<div class="donut-grid">' +
+            '<div class="donut-item">' +
+              '<div class="donut" id="historyAeratorDonut" role="img" aria-label="增氧运行占比">' +
+                '<span class="donut-center" id="historyAeratorDonutText">--</span>' +
+              '</div>' +
+              '<div class="donut-label">增氧运行</div>' +
+              '<div class="donut-sub" id="historyAeratorDonutSub">--</div>' +
+            '</div>' +
+            '<div class="donut-item">' +
+              '<div class="donut" id="historyLowDoDonut" role="img" aria-label="低溶氧占比">' +
+                '<span class="donut-center" id="historyLowDoDonutText">--</span>' +
+              '</div>' +
+              '<div class="donut-label">低溶氧</div>' +
+              '<div class="donut-sub" id="historyLowDoDonutSub">--</div>' +
+            '</div>' +
+          '</div>' +
+          '<p class="donut-note">占比按查询区间总时长计算；低溶氧指低于开机阈值。</p>' +
+        '</article>' +
+      '</div>';
+  }
+
+  function bindHistoryView() {
+    const typeSwitch = el('historyChartTypes');
+    if (typeSwitch) {
+      typeSwitch.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-chart-type]');
+        if (!button) return;
+        const type = button.dataset.chartType;
+        if (type === state.history.chartType) return;
+        state.history.chartType = type;
+        createHistoryChart();
+        if (state.history.data) renderHistorySeries(state.history.data);
+      });
+    }
+
+    const presets = el('historyPresets');
+    if (presets) {
+      presets.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-preset]');
+        if (button) applyHistoryPreset(button.dataset.preset);
+      });
+    }
+
+    const refresh = el('historyRefresh');
+    if (refresh) refresh.addEventListener('click', function () { fetchHistoryData(); });
+
+    const apply = el('historyApply');
+    if (apply) apply.addEventListener('click', applyCustomHistoryRange);
+
+    const exportButton = el('historyExport');
+    if (exportButton) exportButton.addEventListener('click', function () { exportHistoryCsv(exportButton); });
+
+    const reset = el('historyResetZoom');
+    if (reset) reset.addEventListener('click', resetHistoryView);
+
+    ['historyFrom', 'historyTo'].forEach(function (id) {
+      const input = el(id);
+      if (!input) return;
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          applyCustomHistoryRange();
+        }
+      });
+    });
+  }
+
+  function updateHistoryInputs() {
+    const from = el('historyFrom');
+    const to = el('historyTo');
+    if (from) from.value = fmt.dateInputValue(state.history.from);
+    if (to) to.value = fmt.dateInputValue(state.history.to);
+  }
+
+  function markHistoryPreset(preset) {
+    document.querySelectorAll('#historyPresets [data-preset]').forEach(function (button) {
+      const active = button.dataset.preset === preset;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function setHistoryLoading(loading) {
+    ['historyRefresh', 'historyExport', 'historyApply'].forEach(function (id) {
+      const button = el(id);
+      if (button) button.disabled = !!loading;
+    });
+    const view = el('view-history');
+    if (view) view.classList.toggle('is-loading', !!loading);
+  }
+
+  function applyHistoryPreset(preset) {
+    if (!HISTORY_PRESETS[preset]) return;
+    const bounds = historyPresetBounds(preset);
+    if (!bounds) {
+      ui.toast('鱼塘时间还未就绪，请稍后再试', 'warn');
+      return;
+    }
+    state.history.preset = preset;
+    state.history.basePreset = preset;
+    state.history.from = bounds.from;
+    state.history.to = bounds.to;
+    updateHistoryInputs();
+    markHistoryPreset(preset);
+    fetchHistoryData();
+  }
+
+  function applyCustomHistoryRange() {
+    const fromInput = el('historyFrom');
+    const toInput = el('historyTo');
+    if (!fromInput || !toInput || !fromInput.value || !toInput.value) {
+      ui.toast('请先选择开始和结束时间', 'warn');
+      return;
+    }
+    const from = fromInput.value.length === 16 ? fromInput.value + ':00' : fromInput.value;
+    const to = toInput.value.length === 16 ? toInput.value + ':00' : toInput.value;
+    const minutes = historyMinutesBetween(from, to);
+    if (minutes < 1) {
+      ui.toast('开始时间必须早于结束时间，且至少间隔 1 分钟', 'warn');
+      return;
+    }
+    const current = historyNow();
+    if (current && historyMinutesBetween(current, to) > 0) {
+      ui.toast('结束时间不能晚于鱼塘当前时间 ' + fmt.dateTime(current), 'warn');
+      return;
+    }
+    const retention = state.history.data ? Number(state.history.data.retentionDays) : 31;
+    if (retention > 0 && minutes > retention * 24 * 60) {
+      ui.toast('最多只能查看最近 ' + retention + ' 天的记录', 'warn');
+      return;
+    }
+
+    state.history.preset = 'custom';
+    state.history.from = from;
+    state.history.to = to;
+    markHistoryPreset('');
+    fetchHistoryData();
+  }
+
+  function zoomHistoryRange(selection) {
+    const data = state.history.data;
+    if (!data || !selection) return;
+    const span = historyMinutesBetween(data.from, data.to);
+    let start = Math.max(0, Math.min(Number(selection.start), Number(selection.end)));
+    let end = Math.min(span, Math.max(Number(selection.start), Number(selection.end)));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < 1) {
+      ui.toast('框选范围太小，请至少选择 1 分钟', 'warn');
+      return;
+    }
+
+    state.history.preset = 'custom';
+    state.history.from = historyIso(historyShift(data.from, start));
+    state.history.to = historyIso(historyShift(data.from, end));
+    updateHistoryInputs();
+    markHistoryPreset('');
+    fetchHistoryData();
+  }
+
+  function resetHistoryView() {
+    const preset = HISTORY_PRESETS[state.history.basePreset] ? state.history.basePreset : '24h';
+    applyHistoryPreset(preset);
+  }
+
+  async function fetchHistoryData() {
+    const pondId = state.activePondId;
+    const requestId = ++state.history.requestId;
+    const chartSub = el('historyChartSub');
+    if (!pondId) {
+      if (chartSub) chartSub.textContent = '还没有可查询的鱼塘，请先在鱼塘管理中新增';
+      return;
+    }
+
+    setHistoryLoading(true);
+    if (chartSub) chartSub.textContent = '正在读取历史采样…';
+    try {
+      const data = await api.records.series(pondId, state.history.from, state.history.to);
+      if (requestId !== state.history.requestId || state.route !== 'history') return;
+      state.history.data = data;
+      state.history.from = data.from;
+      state.history.to = data.to;
+      renderHistorySeries(data);
+    } catch (error) {
+      if (requestId !== state.history.requestId || state.route !== 'history') return;
+      ui.toast(errorMessage(error), 'error', '历史记录加载失败');
+      if (chartSub) chartSub.textContent = errorMessage(error);
+      if (historyChart) historyChart.setData(null);
+    } finally {
+      if (requestId === state.history.requestId) setHistoryLoading(false);
+    }
+  }
+
+  function renderHistorySeries(data) {
+    const summary = data.summary || {};
+    const points = Array.isArray(data.points) ? data.points : [];
+    const hasSamples = Number(data.sampleCount) > 0;
+    const span = historyMinutesBetween(data.from, data.to);
+    const bucketText = historyDuration(data.bucketMinutes);
+    const rangeText = fmt.dateTime(data.from) + ' → ' + fmt.dateTime(data.to);
+    const retention = Number(data.retentionDays) || 31;
+
+    setText('historyRetention', '保留 ' + retention + ' 天');
+    setText('historyHint', '仅保留最近 ' + retention + ' 天，每天 03:40 自动清理更早的采样。');
+    setText('historyRangeLabel', rangeText);
+    setText('historyMeta', hasSamples
+      ? data.sampleCount + ' 条采样 · 聚合 ' + points.length + ' 点 · 每点 ' + bucketText
+      : '该时间范围没有采样');
+    setText('historyChartSub', rangeText + ' · 每点 ' + bucketText);
+
+    setText('historyAvgDo', hasSamples ? fmt.num(summary.avgDo, 2) : '--');
+    setText('historyDoRange', hasSamples
+      ? '最低 ' + fmt.num(summary.minDo, 2) + ' · 最高 ' + fmt.num(summary.maxDo, 2) + ' mg/L'
+      : '--');
+    setText('historyAvgTemp', hasSamples ? fmt.num(summary.avgTemperature, 1) : '--');
+    setText('historyTempRange', hasSamples
+      ? '最低 ' + fmt.num(summary.minTemperature, 1) + ' · 最高 ' + fmt.num(summary.maxTemperature, 1) + ' ℃'
+      : '--');
+    const phAvailable = hasSamples && Number(summary.avgPh) > 0;
+    setText('historyAvgPh', phAvailable ? fmt.num(summary.avgPh, 2) : '--');
+    setText('historyPhRange', phAvailable
+      ? '最低 ' + fmt.num(summary.minPh, 2) + ' · 最高 ' + fmt.num(summary.maxPh, 2) + ' · 适宜 6.5–8.5'
+      : '该区间无 pH 数据');
+    setText('historyAerator', hasSamples ? fmt.elapsed(summary.aeratorMinutes) : '--');
+    setText('historyAeratorFoot', hasSamples
+      ? '占区间 ' + fmt.num(summary.aeratorMinutes / Math.max(1, span) * 100, 0) + '%'
+      : '--');
+    setText('historyLowDo', hasSamples ? fmt.elapsed(summary.lowDoMinutes) : '--');
+    setText('historyLowDoFoot', '开机阈值 < ' + fmt.num(summary.onThreshold, 1) + ' mg/L');
+
+    const spanMinutes = Math.max(1, span);
+    const aeratorPercent = hasSamples ? summary.aeratorMinutes / spanMinutes * 100 : 0;
+    const lowPercent = hasSamples ? summary.lowDoMinutes / spanMinutes * 100 : 0;
+    setHistoryDonut('historyAeratorDonut', aeratorPercent, '--chart-off',
+      hasSamples ? fmt.elapsed(summary.aeratorMinutes) + ' / ' + fmt.elapsed(spanMinutes) : '--');
+    setHistoryDonut('historyLowDoDonut', lowPercent, '--chart-floor',
+      hasSamples ? fmt.elapsed(summary.lowDoMinutes) + ' / ' + fmt.elapsed(spanMinutes) : '--');
+
+    const fromInput = el('historyFrom');
+    const toInput = el('historyTo');
+    if (fromInput) fromInput.value = fmt.dateInputValue(data.from);
+    if (toInput) toInput.value = fmt.dateInputValue(data.to);
+    markHistoryPreset(state.history.preset);
+
+    if (!historyChart) return;
+    historyChart.clearSelection();
+    historyChart.setData({
+      pondTime: data.to,
+      elapsedMinutes: span,
+      history: points.map(function (point) {
+        return {
+          minuteOffset: historyMinutesBetween(data.from, point.time),
+          doValue: Number(point.doValue),
+          temperature: Number(point.temperature),
+          ph: Number(point.ph),
+          aeratorOn: !!point.aeratorOn
+        };
+      }),
+      prediction: [],
+      thresholds: {
+        safetyFloor: Number(summary.safetyFloor),
+        onThreshold: Number(summary.onThreshold),
+        offThreshold: Number(summary.offThreshold)
+      }
+    });
+  }
+
+  function setHistoryDonut(id, percent, colorVar, subText) {
+    const node = el(id);
+    if (!node) return;
+    const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+    node.style.background = 'conic-gradient(var(' + colorVar + ') 0 ' + pct.toFixed(1) +
+      '%, var(--surface-3) ' + pct.toFixed(1) + '% 100%)';
+    setText(id + 'Text', pct <= 0 ? '0%'
+      : pct < 0.1 ? '<0.1%'
+      : pct < 10 ? pct.toFixed(1) + '%'
+      : Math.round(pct) + '%');
+    setText(id + 'Sub', subText || '--');
+    node.title = '占比 ' + fmt.num(pct, 1) + '%';
+  }
+
+  async function exportHistoryCsv(button) {
+    const data = state.history.data;
+    if (!data) {
+      ui.toast('还没有可导出的历史数据', 'warn');
+      return;
+    }
+    await busy(button, async function () {
+      try {
+        const blob = await api.records.exportCsv(data.pondId, data.from, data.to);
+        const filename = 'history-pond' + data.pondId + '-' +
+          fmt.date(data.from).replace(/-/g, '') + fmt.time(data.from).replace(':', '') + '-' +
+          fmt.date(data.to).replace(/-/g, '') + fmt.time(data.to).replace(':', '') + '.csv';
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        ui.toast('CSV 已生成，共 ' + (data.points || []).length + ' 个聚合点', 'success');
+      } catch (error) {
+        ui.toast(errorMessage(error), 'error', '导出失败');
+      }
+    });
   }
 
   /* ------------------------------ 告警中心 ------------------------------ */
@@ -2871,6 +3596,7 @@
           option('clock', '鱼塘时钟', filter.module === 'clock') +
           option('alert', '告警中心', filter.module === 'alert') +
           option('price', '电价管理', filter.module === 'price') +
+          option('water', '换水调水', filter.module === 'water') +
         '</select></label>' +
         '<label class="field grow"><span>操作人</span>' +
           '<input class="input" id="logOperator" placeholder="精确匹配，如 admin" value="' + esc(filter.operator) + '">' +
@@ -3143,6 +3869,10 @@
             (active
               ? ''
               : '<button class="btn ghost sm" type="button" data-pond-compare="' + esc(pond.id) + '">与当前对比</button>') +
+            (state.ponds.length > 1
+              ? '<button class="btn danger sm" type="button" data-pond-delete="' + esc(pond.id) + '" title="删除鱼塘">' +
+                  icon('trash') + '删除</button>'
+              : '') +
           '</div>' +
         '</div>';
     }).join('');
@@ -3159,6 +3889,11 @@
     const cards = el('pondCards');
     if (cards) {
       cards.addEventListener('click', function (event) {
+        const deleteBtn = event.target.closest('[data-pond-delete]');
+        if (deleteBtn) {
+          deletePondFromCard(Number(deleteBtn.dataset.pondDelete), deleteBtn);
+          return;
+        }
         const switchBtn = event.target.closest('[data-pond-switch]');
         if (switchBtn) {
           selectPond(Number(switchBtn.dataset.pondSwitch));
@@ -3217,6 +3952,34 @@
     }
   }
 
+  async function deletePondFromCard(id, button) {
+    const pond = pondById(id);
+    const name = pondLabel(pond);
+    const confirmed = await ui.confirm({
+      title: '删除「' + name + '」？',
+      message: '该鱼塘的增氧策略、系统设置、告警、采样与增氧日志会一并删除，操作日志保留。\n' +
+        '此操作不可恢复，至少需要保留一个鱼塘。',
+      confirmText: '确认删除',
+      danger: true
+    });
+    if (!confirmed) return;
+
+    await busy(button, async function () {
+      try {
+        await api.ponds.remove(id);
+        await loadPonds();
+        ensureActivePond();
+        ensureComparePond();
+        resetPondCaches();
+        renderPondControls();
+        if (state.route === 'ponds') await loadPondsView();
+        ui.toast('已删除「' + name + '」', 'success');
+      } catch (error) {
+        ui.toast(errorMessage(error), 'error', '删除失败');
+      }
+    });
+  }
+
   /* ------------------------------ 系统设置页 ------------------------------ */
 
   async function loadSettingsView() {
@@ -3272,6 +4035,19 @@
             '<button class="btn primary" type="submit">保存账号设置</button>' +
           '</div>' +
         '</form>' +
+        '<div class="account-delete">' +
+          '<div class="account-delete-copy">' +
+            '<strong>删除当前账号</strong>' +
+            '<p>删除后无法再用该账号登录，用户名可重新注册。系统至少保留一个可用账号，操作不可恢复。</p>' +
+          '</div>' +
+          '<form id="accountDeleteForm" novalidate autocomplete="off">' +
+            '<div class="field">' +
+              '<label for="accountDeletePassword">当前密码</label>' +
+              '<input class="input" id="accountDeletePassword" name="password" type="password" maxlength="64" autocomplete="current-password" placeholder="输入当前密码以确认删除">' +
+            '</div>' +
+            '<button class="btn danger" type="submit">' + icon('trash') + '永久删除账号</button>' +
+          '</form>' +
+        '</div>' +
       '</article>';
   }
 
@@ -3332,6 +4108,7 @@
 
   function bindSettingsView(settings) {
     bindAccountForm();
+    bindAccountDeleteForm();
 
     const form = el('settingForm');
     if (!form) return;
@@ -3453,6 +4230,47 @@
           loadSettingsView();
         } catch (error) {
           ui.toast(errorMessage(error), 'error', '保存失败');
+        }
+      });
+    });
+  }
+
+  function bindAccountDeleteForm() {
+    const form = el('accountDeleteForm');
+    if (!form) return;
+
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const input = form.elements.namedItem('password');
+      const password = input ? input.value : '';
+      if (!password) {
+        ui.toast('请输入当前密码', 'warn', '无法删除账号');
+        if (input) input.focus();
+        return;
+      }
+
+      const confirmed = await ui.confirm({
+        title: '永久删除当前账号？',
+        message: '删除后将立即退出登录，无法再用该账号进入系统。\n此操作不可恢复；系统至少保留一个可用账号。',
+        confirmText: '永久删除',
+        danger: true
+      });
+      if (!confirmed) return;
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      await busy(submitBtn, async function () {
+        try {
+          await api.auth.deleteAccount(password);
+          try {
+            window.localStorage.removeItem('aquaguard.rememberedUser');
+            window.localStorage.removeItem('aquaguard.displayName');
+            window.localStorage.removeItem('aquaguard.operator');
+          } catch (e) { /* 隐私模式下忽略 */ }
+          ui.toast('账号已删除，即将返回登录页', 'success');
+          setTimeout(function () { window.location.replace('/login.html'); }, 700);
+        } catch (error) {
+          ui.toast(errorMessage(error), 'error', '删除失败');
+          if (input) { input.focus(); input.select(); }
         }
       });
     });

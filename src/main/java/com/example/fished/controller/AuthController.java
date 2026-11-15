@@ -3,6 +3,7 @@ package com.example.fished.controller;
 import com.example.fished.common.BusinessException;
 import com.example.fished.common.Result;
 import com.example.fished.common.ResultCodeEnum;
+import com.example.fished.dto.AccountDeleteDTO;
 import com.example.fished.dto.AccountUpdateDTO;
 import com.example.fished.dto.LoginDTO;
 import com.example.fished.dto.RegisterDTO;
@@ -83,6 +84,22 @@ public class AuthController {
         session.setAttribute(SESSION_USER, updated);
 
         return Result.success(updated);
+    }
+
+    @DeleteMapping("/account")
+    public Result<Void> deleteAccount(@Valid @RequestBody AccountDeleteDTO dto,
+                                      HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        Object value = session == null ? null : session.getAttribute(SESSION_USER);
+        if (!(value instanceof LoginVO current)) {
+            throw new BusinessException(ResultCodeEnum.UNAUTHORIZED.getCode(), "未登录或登录已过期");
+        }
+
+        authService.deleteAccount(current.getId(), dto.getCurrentPassword());
+        if (session != null) {
+            session.invalidate();
+        }
+        return Result.success();
     }
 
     @PostMapping("/logout")

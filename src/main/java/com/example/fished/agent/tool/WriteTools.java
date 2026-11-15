@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -84,7 +85,28 @@ public class WriteTools {
                         object(props("pondId", prop("integer", "鱼塘 id")), List.of("pondId"))),
                         false,
                         (args, ctx) -> setPaused(args, ctx, false),
-                        this::describeResume)
+                        this::describeResume),
+
+                new SimpleAgentTool(spec("exchange_water",
+                        "给指定鱼塘换水：按比例用外源水稀释当前水体，pH 会向水源值靠拢，溶氧也会变化。这是写操作，调用后不会立即生效，需要用户在前端确认。用户说“换水/换一部分水/加水”时调用；比例 10%-50%，不传默认 30%。",
+                        object(props(
+                                "pondId", prop("integer", "鱼塘 id"),
+                                "ratioPercent", prop("integer", "换水比例，10-50，默认 30")),
+                                List.of("pondId"))),
+                        false,
+                        (args, ctx) -> exchangeWater(args, ctx),
+                        this::describeExchangeWater),
+
+                new SimpleAgentTool(spec("adjust_water",
+                        "给指定鱼塘调水：投放调水剂，把 pH 拉向目标值，并轻微改善溶氧。这是写操作，调用后不会立即生效，需要用户在前端确认。用户说“调水/调 pH/水质调节”时调用；目标 pH 必须在 6.5-8.5，强度 1-3，默认 1。",
+                        object(props(
+                                "pondId", prop("integer", "鱼塘 id"),
+                                "targetPh", prop("number", "目标 pH，6.5-8.5"),
+                                "strength", prop("integer", "调水强度 1-3，默认 1")),
+                                List.of("pondId", "targetPh"))),
+                        false,
+                        (args, ctx) -> adjustWater(args, ctx),
+                        this::describeAdjustWater)
         );
     }
 
@@ -142,6 +164,78 @@ public class WriteTools {
         node.put("paused", snapshot.paused());
         node.put("pondTime", snapshot.pondTime().toString());
         return node.toString();
+    }
+
+    private String exchangeWater(JsonNode args, ToolContext context) {
+        long pondId = pondId(args);
+        int percent = intArg(args, "ratioPercent", 30);
+        if (percent < 10 || percent > 50) {
+            throw new BusinessException("换水比例必须在 10%-50% 之间");
+        }
+        SimulationEngine engine = pondManager.requireEngine(pondId);
+        SimulationEngine.WaterActionResult result = engine.exchangeWater(percent / 100.0);
+
+        String detail = String.format(Locale.ROOT,
+                "鱼塘#%d 换水 %d%%，pH %.2f→%.2f，溶氧 %.2f→%.2f mg/L",
+                pondId, percent, result.before().ph(), result.after().ph(),
+                result.before().currentDo(), result.after().currentDo());
+        operationLogService.record(OperationModuleEnum.WATER,
+                OperationActionEnum.EXCHANGE_WATER, detail, context.operator());
+        return waterResultNode(pondId, "换水 " + percent + "% 完成", result).toString();
+    }
+
+    private String adjustWater(JsonNode args, ToolContext context) {
+        long pondId = pondId(args);
+        double targetPh = doubleArg(args, "targetPh");
+        if (targetPh < 6.5 || targetPh > 8.5) {
+            throw new BusinessException("目标 pH 必须在 6.5-8.5 的适宜区间内");
+        }
+        int strength = intArg(args, "strength", 1);
+        if (strength < 1 || strength > 3) {
+            throw new BusinessException("调水强度只能是 1、2 或 3");
+        }
+        SimulationEngine engine = pondManager.requireEngine(pondId);
+        SimulationEngine.WaterActionResult result = engine.adjustWater(targetPh, strength);
+
+        String detail = String.format(Locale.ROOT,
+                "鱼塘#%d 调水（强度 %d），pH %.2f→%.2f（目标 %.2f），溶氧 %.2f→%.2f mg/L",
+                pondId, strength, result.before().ph(), result.after().ph(), targetPh,
+                result.before().currentDo(), result.after().currentDo());
+        operationLogService.record(OperationModuleEnum.WATER,
+                OperationActionEnum.ADJUST_WATER, detail, context.operator());
+        return waterResultNode(pondId, "调水完成", result).toString();
+    }
+
+    private ObjectNode waterResultNode(long pondId, String message,
+                                       SimulationEngine.WaterActionResult result) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("ok", true);
+        node.put("message", pondManager.nameOf(pondId) + message);
+        node.put("pondId", pondId);
+        node.set("before", snapshotNode(result.before()));
+        node.set("after", snapshotNode(result.after()));
+        return node;
+    }
+
+    private ObjectNode snapshotNode(PondSnapshot snapshot) {
+        ObjectNode node = mapper.createObjectNode();
+        node.put("pondTime", snapshot.pondTime().toString());
+        node.put("currentDo", snapshot.currentDo());
+        node.put("temperature", snapshot.temperature());
+        node.put("ph", snapshot.ph());
+        node.put("aeratorOn", snapshot.aeratorOn());
+        return node;
+    }
+
+    private static double doubleArg(JsonNode args, String name) {
+        if (args == null || !args.hasNonNull(name)) {
+            throw new BusinessException("请提供 " + name);
+        }
+        double value = args.get(name).asDouble(Double.NaN);
+        if (!Double.isFinite(value)) {
+            throw new BusinessException(name + " 必须是数字");
+        }
+        return value;
     }
 
     private void validate(StrategyUpdateDTO dto) {
@@ -222,6 +316,32 @@ public class WriteTools {
 
     private String describeResume(JsonNode args) {
         return "继续" + pondManager.nameOf(pondId(args)) + "的仿真时钟。";
+    }
+
+    private String describeExchangeWater(JsonNode args) {
+        long pondId = pondId(args);
+        int percent = intArg(args, "ratioPercent", 30);
+        if (percent < 10 || percent > 50) {
+            throw new BusinessException("换水比例必须在 10%-50% 之间");
+        }
+        return "给" + pondManager.nameOf(pondId) + "换水 " + percent
+                + "%，pH 和溶氧会向水源值变化。";
+    }
+
+    private String describeAdjustWater(JsonNode args) {
+        long pondId = pondId(args);
+        double targetPh = doubleArg(args, "targetPh");
+        if (targetPh < 6.5 || targetPh > 8.5) {
+            throw new BusinessException("目标 pH 必须在 6.5-8.5 的适宜区间内");
+        }
+        int strength = intArg(args, "strength", 1);
+        if (strength < 1 || strength > 3) {
+            throw new BusinessException("调水强度只能是 1、2 或 3");
+        }
+        double currentPh = pondManager.requireEngine(pondId).getSnapshot().ph();
+        return String.format(Locale.ROOT,
+                "给%s调水：pH %.2f → 目标 %.2f，强度 %d，并轻微改善溶氧。",
+                pondManager.nameOf(pondId), currentPh, targetPh, strength);
     }
 
     // ------------------------------------------------------------------ 参数

@@ -10,6 +10,7 @@ public class PondState {
     private LocalDateTime pondTime;
     private double doValue;
     private double temperature;
+    private double phValue;
     private boolean aeratorOn;
     private boolean paused;
     private int speed;
@@ -33,6 +34,7 @@ public class PondState {
         this.pondTime = startTime;
         this.doValue = initialDo;
         this.temperature = initialTemperature;
+        this.phValue = Physics.DEFAULT_PH;
         this.paused = false;
         this.speed = 1;
         this.elapsedMinutes = 0L;

@@ -5,13 +5,16 @@ import com.example.fished.common.BusinessException;
 import com.example.fished.common.PageResult;
 import com.example.fished.dto.AeratorLogQueryDTO;
 import com.example.fished.dto.AlertQueryDTO;
+import com.example.fished.dto.HistoryQueryDTO;
 import com.example.fished.service.AeratorLogService;
 import com.example.fished.service.AeratorStrategyService;
 import com.example.fished.service.AlertService;
 import com.example.fished.service.ElectricityPriceService;
+import com.example.fished.service.HistoryService;
 import com.example.fished.service.PondConfigService;
 import com.example.fished.service.SimSettingService;
 import com.example.fished.sim.DoPoint;
+import com.example.fished.sim.PhGuard;
 import com.example.fished.sim.PondManager;
 import com.example.fished.sim.PondSnapshot;
 import com.example.fished.sim.SimulationEngine;
@@ -19,6 +22,7 @@ import com.example.fished.sim.StrategyParams;
 import com.example.fished.sim.TemperatureGuard;
 import com.example.fished.vo.AeratorLogVO;
 import com.example.fished.vo.AlertVO;
+import com.example.fished.vo.HistorySeriesVO;
 import com.example.fished.vo.PondVO;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +32,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.DateTimeException;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -53,6 +58,7 @@ public class ReadTools {
     private final SimSettingService simSettingService;
     private final PondConfigService pondConfigService;
     private final ElectricityPriceService electricityPriceService;
+    private final HistoryService historyService;
     private final ObjectMapper mapper;
 
     public ReadTools(PondManager pondManager,
@@ -62,6 +68,7 @@ public class ReadTools {
                      SimSettingService simSettingService,
                      PondConfigService pondConfigService,
                      ElectricityPriceService electricityPriceService,
+                     HistoryService historyService,
                      ObjectMapper mapper) {
         this.pondManager = pondManager;
         this.alertService = alertService;
@@ -70,6 +77,7 @@ public class ReadTools {
         this.simSettingService = simSettingService;
         this.pondConfigService = pondConfigService;
         this.electricityPriceService = electricityPriceService;
+        this.historyService = historyService;
         this.mapper = mapper;
     }
 
@@ -95,13 +103,29 @@ public class ReadTools {
                                 List.of("pondId")),
                         (args, ctx) -> realtime(args)),
 
+                tool("measure_ph",
+                        "测量指定鱼塘当前 pH，并返回适宜区间（6.5-8.5）、状态（偏酸/适宜/偏碱）和最近趋势。用户问“pH 多少”“水质酸碱度”“pH 是否正常”时调用。pH 是辅助指标，不参与自动增氧决策。",
+                        object(props("pondId", prop("integer", "鱼塘 id，可先调用 list_ponds 获取")),
+                                List.of("pondId")),
+                        (args, ctx) -> measurePh(args)),
+
                 tool("get_pond_history",
-                        "查询指定鱼塘最近的历史溶氧采样点，并返回首值、末值、最小值、最大值等趋势摘要。用户问“最近/过去/走势/变化”时调用。",
+                        "查询内存中的最近采样点（通常只有最近数小时到数天，取决于采样间隔），返回首值、末值、最小值、最大值等趋势摘要。用户只问“最近一小时/刚刚的变化”时调用；按日期查询请用 query_pond_history。",
                         object(props(
                                 "pondId", prop("integer", "鱼塘 id"),
                                 "limit", prop("integer", "返回的采样点数量，1-200，默认 60")),
                                 List.of("pondId")),
                         (args, ctx) -> history(args)),
+
+                tool("query_pond_history",
+                        "查询已落库的鱼塘历史记录（最多最近 31 天），支持按日期范围统计溶氧、水温、增氧时长和低溶氧时长。用户问“昨天/前天/上周/最近一周/某一天/这个月”的历史情况时调用。只传 days 即可从鱼塘当前时间往前查；日期用 ISO 格式。",
+                        object(props(
+                                "pondId", prop("integer", "鱼塘 id"),
+                                "from", prop("string", "开始时间，ISO 格式，如 2026-11-05T08:00:00 或 2026-11-05；不传时按 days 从结束时间往前推"),
+                                "to", prop("string", "结束时间，ISO 格式；不传默认鱼塘当前时间"),
+                                "days", prop("integer", "未传 from 时往前查多少天，1-31，默认 1")),
+                                List.of("pondId")),
+                        (args, ctx) -> persistedHistory(args)),
 
                 tool("compare_ponds",
                         "对比多口鱼塘的实时溶氧、水温、增氧机状态和预测最低值。用户问“对比”“哪口塘更危险”时调用；不传 pondIds 则对比全部鱼塘（最多 4 口）。",
@@ -224,6 +248,10 @@ public class ReadTools {
         node.put("pondTime", snapshot.pondTime().toString());
         node.put("currentDo", round2(snapshot.currentDo()));
         node.put("temperature", round2(snapshot.temperature()));
+        node.put("ph", round2(snapshot.ph()));
+        node.put("phStatus", PhGuard.status(snapshot.ph()));
+        node.put("phComfortMin", PhGuard.COMFORT_MIN);
+        node.put("phComfortMax", PhGuard.COMFORT_MAX);
         node.put("temperatureStatus", TemperatureGuard.status(snapshot.temperature()).getDesc());
         node.put("temperatureComfortMin", TemperatureGuard.COMFORT_MIN);
         node.put("temperatureComfortMax", TemperatureGuard.COMFORT_MAX);
@@ -243,7 +271,38 @@ public class ReadTools {
             node.put("predictedMin", round2(prediction.stream()
                     .mapToDouble(DoPoint::doValue).min().orElse(snapshot.currentDo())));
         }
-        node.put("dataUnit", "溶氧 mg/L，水温 ℃");
+        node.put("dataUnit", "溶氧 mg/L，水温 ℃，pH 无量纲");
+        return json(node);
+    }
+
+    private String measurePh(JsonNode args) {
+        long pondId = pondId(args);
+        SimulationEngine engine = requireEngine(pondId);
+        PondSnapshot snapshot = engine.getSnapshot();
+        double ph = snapshot.ph();
+
+        ObjectNode node = mapper.createObjectNode();
+        node.put("pondId", pondId);
+        node.put("pondName", pondManager.nameOf(pondId));
+        node.put("pondTime", snapshot.pondTime().toString());
+        node.put("ph", round2(ph));
+        node.put("status", PhGuard.status(ph));
+        node.put("comfortMin", PhGuard.COMFORT_MIN);
+        node.put("comfortMax", PhGuard.COMFORT_MAX);
+        node.put("dataUnit", "pH 无量纲");
+
+        List<DoPoint> recent = engine.getHistory(120);
+        List<DoPoint> valid = recent == null ? List.of()
+                : recent.stream().filter(point -> point != null && point.ph() > 0).toList();
+        if (!valid.isEmpty()) {
+            double first = valid.get(0).ph();
+            double last = valid.get(valid.size() - 1).ph();
+            node.put("recentMin", round2(valid.stream().mapToDouble(DoPoint::ph).min().orElse(ph)));
+            node.put("recentMax", round2(valid.stream().mapToDouble(DoPoint::ph).max().orElse(ph)));
+            node.put("recentChange", round2(last - first));
+            node.put("recentSamples", valid.size());
+        }
+        node.put("note", "pH 是辅助水质指标，不参与自动增氧决策；适宜区间 6.5-8.5。");
         return json(node);
     }
 
@@ -267,6 +326,13 @@ public class ReadTools {
         node.put("lastDo", last.doValue());
         node.put("minDo", points.stream().mapToDouble(DoPoint::doValue).min().orElse(0));
         node.put("maxDo", points.stream().mapToDouble(DoPoint::doValue).max().orElse(0));
+        List<DoPoint> phPoints = points.stream().filter(point -> point.ph() > 0).toList();
+        if (!phPoints.isEmpty()) {
+            node.put("firstPh", round2(phPoints.get(0).ph()));
+            node.put("lastPh", round2(phPoints.get(phPoints.size() - 1).ph()));
+            node.put("minPh", round2(phPoints.stream().mapToDouble(DoPoint::ph).min().orElse(0)));
+            node.put("maxPh", round2(phPoints.stream().mapToDouble(DoPoint::ph).max().orElse(0)));
+        }
         node.put("firstMinuteOffset", first.minuteOffset());
         node.put("lastMinuteOffset", last.minuteOffset());
 
@@ -278,7 +344,81 @@ public class ReadTools {
             item.put("minuteOffset", point.minuteOffset());
             item.put("currentDo", point.doValue());
             item.put("temperature", point.temperature());
+            item.put("ph", point.ph());
             item.put("aeratorOn", point.aeratorOn());
+        }
+        return json(node);
+    }
+
+    private String persistedHistory(JsonNode args) {
+        long pondId = pondId(args);
+        int days = clamp(intArg(args, "days", 1), 1, 31);
+        LocalDateTime to = historyTimeArg(args, "to", true);
+        LocalDateTime from = historyTimeArg(args, "from", false);
+
+        if (from == null) {
+            LocalDateTime anchor = to;
+            if (anchor == null) {
+                PondSnapshot snapshot = requireEngine(pondId).getSnapshot();
+                anchor = snapshot == null ? null : snapshot.pondTime();
+            }
+            if (anchor == null) {
+                throw new BusinessException("鱼塘时间尚未初始化，暂时无法查询历史记录");
+            }
+            from = anchor.minusDays(days);
+        }
+
+        HistoryQueryDTO query = new HistoryQueryDTO();
+        query.setPondId(pondId);
+        query.setFrom(from);
+        query.setTo(to);
+        HistorySeriesVO series = historyService.series(query);
+
+        ObjectNode node = mapper.createObjectNode();
+        node.put("pondId", series.getPondId());
+        node.put("pondName", series.getPondName());
+        node.put("from", series.getFrom().toString());
+        node.put("to", series.getTo().toString());
+        node.put("currentPondTime", series.getCurrentPondTime().toString());
+        node.put("retentionDays", series.getRetentionDays());
+        node.put("sampleCount", series.getSampleCount());
+        node.put("bucketMinutes", series.getBucketMinutes());
+        node.put("dataUnit", "溶氧 mg/L，水温 ℃，时长分钟");
+
+        HistorySeriesVO.Summary summary = series.getSummary();
+        ObjectNode summaryNode = node.putObject("summary");
+        summaryNode.put("avgDo", summary.avgDo());
+        summaryNode.put("minDo", summary.minDo());
+        summaryNode.put("maxDo", summary.maxDo());
+        summaryNode.put("avgTemperature", summary.avgTemperature());
+        summaryNode.put("minTemperature", summary.minTemperature());
+        summaryNode.put("maxTemperature", summary.maxTemperature());
+        summaryNode.put("avgPh", summary.avgPh());
+        summaryNode.put("minPh", summary.minPh());
+        summaryNode.put("maxPh", summary.maxPh());
+        summaryNode.put("aeratorMinutes", summary.aeratorMinutes());
+        summaryNode.put("lowDoMinutes", summary.lowDoMinutes());
+        summaryNode.put("onThreshold", summary.onThreshold());
+        summaryNode.put("offThreshold", summary.offThreshold());
+        summaryNode.put("safetyFloor", summary.safetyFloor());
+
+        List<HistorySeriesVO.Point> points = series.getPoints();
+        ArrayNode arr = node.putArray("points");
+        int step = Math.max(1, (int) Math.ceil(points.size() / 60.0));
+        for (int i = 0; i < points.size(); i += step) {
+            HistorySeriesVO.Point point = points.get(i);
+            ObjectNode item = arr.addObject();
+            item.put("time", point.time().toString());
+            item.put("doValue", point.doValue());
+            item.put("temperature", point.temperature());
+            item.put("ph", point.ph());
+            item.put("aeratorOn", point.aeratorOn());
+        }
+        if (points.isEmpty()) {
+            node.put("note", "该时间范围没有历史采样");
+        } else {
+            node.put("pointsSampled", arr.size());
+            node.put("note", "以上为聚合后的趋势点；数据最多保留 " + series.getRetentionDays() + " 天");
         }
         return json(node);
     }
@@ -303,6 +443,8 @@ public class ReadTools {
             node.put("pondName", pondManager.nameOf(id));
             node.put("currentDo", round2(snapshot.currentDo()));
             node.put("temperature", round2(snapshot.temperature()));
+            node.put("ph", round2(snapshot.ph()));
+            node.put("phStatus", PhGuard.status(snapshot.ph()));
             node.put("aeratorOn", snapshot.aeratorOn());
             node.put("paused", snapshot.paused());
             node.put("safetyFloor", round2(strategy.safetyFloor()));
@@ -316,7 +458,7 @@ public class ReadTools {
         ObjectNode root = mapper.createObjectNode();
         root.set("ponds", arr);
         root.put("predictMinutes", predictMinutes);
-        root.put("dataUnit", "溶氧 mg/L，水温 ℃");
+        root.put("dataUnit", "溶氧 mg/L，水温 ℃，pH 无量纲");
         return json(root);
     }
 
@@ -508,6 +650,24 @@ public class ReadTools {
             return LocalDateTime.parse(value);
         } catch (DateTimeParseException e) {
             throw new BusinessException(name + " 需要 ISO 时间格式，例如 2026-11-05T08:00:00");
+        }
+    }
+
+    /** 历史记录参数：允许 ISO 日期时间，也允许只写日期（开始取 00:00:00，结束取 23:59:59）。 */
+    private static LocalDateTime historyTimeArg(JsonNode args, String name, boolean endOfDay) {
+        String value = textArg(args, name);
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.replace(' ', 'T');
+        try {
+            if (normalized.length() == 10) {
+                LocalDate date = LocalDate.parse(normalized);
+                return endOfDay ? date.atTime(23, 59, 59) : date.atStartOfDay();
+            }
+            return LocalDateTime.parse(normalized);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(name + " 需要 ISO 时间格式，例如 2026-11-05T08:00:00，或只写日期 2026-11-05");
         }
     }
 

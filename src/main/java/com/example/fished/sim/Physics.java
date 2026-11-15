@@ -14,6 +14,13 @@ public final class Physics {
     private static final double REFERENCE_TEMPERATURE=20.0;
     private static final double ESCAPE_RATE=0.5;
 
+    /** pH 辅助模型：默认中性偏碱，换水/调水会改变它，之后缓慢回归自然值。 */
+    public static final double DEFAULT_PH = 7.50;
+    public static final double SOURCE_WATER_PH = 7.20;
+    public static final double PH_MIN = 5.50;
+    public static final double PH_MAX = 9.50;
+    private static final double PH_RELAX_PER_HOUR = 0.12;
+
     private Physics(){}
 
     public static double saturationDo(double temperature){
@@ -55,6 +62,35 @@ public final class Physics {
         double next=doValue+(produce+aeration-consume-escape)*dtHours+noise;
         return Math.max(0.0,next);
     }
+
+    /** 自然状态下的 pH，白天光合作用会略微抬高，夜间回落到 7.5 附近。 */
+    public static double naturalPh(LocalDateTime time) {
+        return DEFAULT_PH + 0.12 * daylightFactor(time);
+    }
+
+    /** pH 向自然值缓慢回归；换水/调水造成的偏移不会立刻消失。 */
+    public static double nextPh(double current, double natural, double dtHours, double noise) {
+        double rate = Math.max(0, Math.min(0.5, PH_RELAX_PER_HOUR * dtHours));
+        double next = current + (natural - current) * rate + noise;
+        return clampPh(next);
+    }
+
+    /** 换水：按比例把当前 pH 稀释到水源 pH。 */
+    public static double exchangePh(double current, double ratio) {
+        double safeRatio = Math.max(0, Math.min(1, ratio));
+        return clampPh(current * (1 - safeRatio) + SOURCE_WATER_PH * safeRatio);
+    }
+
+    /** 调水：投放调水剂后，pH 向目标值移动；strength 越大，单次调整幅度越大。 */
+    public static double adjustPh(double current, double target, int strength) {
+        double rate = Math.max(0.10, Math.min(0.90, 0.25 * Math.max(1, strength)));
+        return clampPh(current + (target - current) * rate);
+    }
+
+    public static double clampPh(double value) {
+        return Math.max(PH_MIN, Math.min(PH_MAX, value));
+    }
+
     private static double hourOf(LocalDateTime time){
         return time.getHour()
                 + time.getMinute()/60.0

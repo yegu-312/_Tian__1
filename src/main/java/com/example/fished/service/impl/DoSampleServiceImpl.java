@@ -33,6 +33,7 @@ public class DoSampleServiceImpl extends ServiceImpl<DoSampleMapper, DoSample>im
         row.setPondTime(SimAssembler.absoluteTime(anchor,point));
         row.setDoValue(BigDecimal.valueOf(point.doValue()));
         row.setTemperature(BigDecimal.valueOf(point.temperature()));
+        row.setPhValue(BigDecimal.valueOf(point.ph()));
         row.setAeratorOn(point.aeratorOn());
         return row;
     }
