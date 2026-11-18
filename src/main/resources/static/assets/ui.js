@@ -125,15 +125,15 @@
 
   function speedHint(speed) {
     const v = Math.max(1, Number(speed) || 1);
-    if (v < 60) return '1 真实秒 = ' + v + ' 模拟秒';
-    if (v < 3600) return '1 真实秒 = ' + (v / 60) + ' 模拟分钟';
-    return '1 真实秒 = ' + (v / 3600) + ' 模拟小时';
+    if (v < 60) return '每 1 秒推进 ' + v + ' 秒';
+    if (v < 3600) return '每 1 秒推进 ' + (v / 60) + ' 分钟';
+    return '每 1 秒推进 ' + (v / 3600) + ' 小时';
   }
 
   function speedPerRealMinute(speed) {
     const v = Math.max(1, Number(speed) || 1) * 60;
-    if (v < 3600) return '1 分钟真实 ≈ ' + (v / 60).toFixed(v % 60 === 0 ? 0 : 1) + ' 分钟模拟';
-    return '1 分钟真实 ≈ ' + (v / 3600).toFixed(v % 3600 === 0 ? 0 : 1) + ' 小时模拟';
+    if (v < 3600) return '每 1 分钟推进 ' + (v / 60).toFixed(v % 60 === 0 ? 0 : 1) + ' 分钟';
+    return '每 1 分钟推进 ' + (v / 3600).toFixed(v % 3600 === 0 ? 0 : 1) + ' 小时';
   }
 
   /* --------------------------- 与后端一致的模型 --------------------------- */

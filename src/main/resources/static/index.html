@@ -6,7 +6,7 @@
   <meta name="description" content="AquaGuard 鱼塘溶氧后台管理系统 · 溶氧实时监控、增氧策略、分时电价与告警中心">
   <title>AquaGuard · 鱼塘溶氧后台管理系统</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/app.css?v=20261115-5">
+  <link rel="stylesheet" href="assets/app.css?v=20261117-9">
 </head>
 <body class="app-body">
   <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
@@ -197,9 +197,18 @@
 
       <nav class="nav" aria-label="主导航">
         <p class="nav-label">运行控制</p>
-        <a class="nav-item" href="#/overview" data-route="overview">
-          <svg class="icon"><use href="#i-gauge"></use></svg><span>实时监控</span>
-        </a>
+        <div class="nav-group">
+          <button class="nav-item nav-parent" type="button" data-nav-toggle="monitor" aria-expanded="true">
+            <svg class="icon"><use href="#i-gauge"></use></svg><span>实时监控</span>
+            <svg class="icon nav-caret"><use href="#i-chevron-right"></use></svg>
+          </button>
+          <div class="nav-sub open" data-nav-sub="monitor">
+            <a class="nav-item nav-child" href="#/overview" data-route="overview"><span>运行总览</span></a>
+            <a class="nav-item nav-child" href="#/metric-do" data-route="metric-do"><span>溶氧分析</span></a>
+            <a class="nav-item nav-child" href="#/metric-temp" data-route="metric-temp"><span>水温分析</span></a>
+            <a class="nav-item nav-child" href="#/metric-ph" data-route="metric-ph"><span>pH 分析</span></a>
+          </div>
+        </div>
         <a class="nav-item" href="#/clock" data-route="clock">
           <svg class="icon"><use href="#i-clock"></use></svg><span>鱼塘时钟</span>
         </a>
@@ -238,9 +247,9 @@
       <div class="sidebar-foot">
         <div class="sidebar-note">
           <svg class="icon"><use href="#i-activity"></use></svg>
-          <span>玩具水体模型<br>每秒推进仿真</span>
+          <span>水质在线监测<br>数据每秒刷新</span>
         </div>
-        <span class="version">AquaGuard v1.0</span>
+        <span class="version">AquaGuard v1.18</span>
       </div>
     </aside>
     <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
@@ -264,6 +273,7 @@
         </div>
 
         <div class="topbar-status">
+          <span class="top-pill build-pill" id="buildPill" title="前端构建版本">v--</span>
           <span class="conn-pill" id="connPill" title="后端连接状态">
             <span class="dot"></span><span id="connText">连接中…</span>
           </span>
@@ -300,6 +310,9 @@
         <section class="view" id="view-aerator" data-view="aerator"></section>
         <section class="view" id="view-electricity" data-view="electricity"></section>
         <section class="view" id="view-history" data-view="history"></section>
+        <section class="view" id="view-metric-do" data-view="metric-do"></section>
+        <section class="view" id="view-metric-temp" data-view="metric-temp"></section>
+        <section class="view" id="view-metric-ph" data-view="metric-ph"></section>
         <section class="view" id="view-alerts" data-view="alerts"></section>
         <section class="view" id="view-logs" data-view="logs"></section>
         <section class="view" id="view-ponds" data-view="ponds"></section>
@@ -313,9 +326,10 @@
   <div id="assistantRoot"></div>
   <div id="commandRoot"></div>
 
-  <script src="assets/api.js?v=20261115-1"></script>
-  <script src="assets/ui.js?v=20261105-1"></script>
+  <script src="assets/api.js?v=20261117-14"></script>
+  <script src="assets/ui.js?v=20261117-1"></script>
   <script src="assets/chart.js?v=20261115-5"></script>
-  <script src="assets/app.js?v=20261115-5"></script>
+  <script src="assets/metric.js?v=20261117-1"></script>
+  <script src="assets/app.js?v=20261117-18"></script>
 </body>
 </html>

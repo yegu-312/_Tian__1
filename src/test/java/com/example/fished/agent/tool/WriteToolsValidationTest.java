@@ -141,7 +141,7 @@ class WriteToolsValidationTest {
     }
 
     @Test
-    @DisplayName("暂停仿真同时写审计日志")
+    @DisplayName("暂停运行同时写审计日志")
     void pauseWritesAuditLog() throws Exception {
         when(engine.pause()).thenReturn(new PondSnapshot(
                 LocalDateTime.of(2026, 11, 5, 9, 30), 5.8, 24.1, true, true, 1, 120));
@@ -150,7 +150,7 @@ class WriteToolsValidationTest {
 
         verify(engine).pause();
         verify(operationLogService).record(eq(OperationModuleEnum.CLOCK),
-                eq(OperationActionEnum.PAUSE), contains("暂停仿真"), eq("alice"));
+                eq(OperationActionEnum.PAUSE), contains("暂停运行"), eq("alice"));
     }
 
     @Test

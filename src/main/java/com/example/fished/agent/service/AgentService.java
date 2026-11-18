@@ -49,8 +49,8 @@ public class AgentService {
             Map.entry("predict_do", "预测溶氧"),
             Map.entry("set_manual_aerator", "开关增氧机"),
             Map.entry("update_aerator_strategy", "修改增氧策略"),
-            Map.entry("pause_pond", "暂停仿真"),
-            Map.entry("resume_pond", "继续仿真"),
+            Map.entry("pause_pond", "暂停推进"),
+            Map.entry("resume_pond", "恢复推进"),
             Map.entry("exchange_water", "换水"),
             Map.entry("adjust_water", "调水")
     );
@@ -498,8 +498,8 @@ public class AgentService {
         return switch (toolName) {
             case "set_manual_aerator" -> "开关增氧机";
             case "update_aerator_strategy" -> "修改增氧策略";
-            case "pause_pond" -> "暂停仿真";
-            case "resume_pond" -> "继续仿真";
+            case "pause_pond" -> "暂停推进";
+            case "resume_pond" -> "恢复推进";
             case "exchange_water" -> "换水";
             case "adjust_water" -> "调水";
             default -> "待确认操作";

@@ -83,16 +83,29 @@
     }
 
     let response;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutMs = Number(opts.timeout) > 0 ? Number(opts.timeout) : 10000;
+    let timer = null;
+    if (controller) {
+      // 卡死的请求必须能被打断，否则轮询标志会一直占着，后续请求全部被跳过
+      timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+    }
     try {
       response = await fetch(url.toString(), {
         method: method,
         headers: headers,
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
         cache: 'no-store',
-        credentials: 'same-origin'
+        credentials: 'same-origin',
+        signal: controller ? controller.signal : undefined
       });
     } catch (e) {
+      if (e && e.name === 'AbortError') {
+        throw new ApiError('请求超时（' + Math.round(timeoutMs / 1000) + ' 秒未响应）', 0);
+      }
       throw new ApiError('无法连接后端（' + ORIGIN + '），请确认服务已启动', 0);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
 
     const text = await response.text();
@@ -327,7 +340,8 @@
     /* 实时监控 */
     realtime: function (predictMinutes, historyLimit, pondId) {
       return request('/monitor/realtime', {
-        params: { pondId: pondId, predictMinutes: predictMinutes, historyLimit: historyLimit }
+        params: { pondId: pondId, predictMinutes: predictMinutes, historyLimit: historyLimit },
+        timeout: 6000
       });
     },
     compare: function (pondIds, predictMinutes, historyLimit) {

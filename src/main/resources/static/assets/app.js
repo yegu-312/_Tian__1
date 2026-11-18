@@ -11,17 +11,22 @@
   const esc = ui.esc;
   const icon = ui.icon;
 
+  const BUILD = 'b20261117-18';
+
   const ROUTES = {
     overview: { label: '实时监控', title: '鱼塘运行总览', sub: '溶氧、水温与增氧机的实时状态' },
     clock: { label: '鱼塘时钟', title: '鱼塘时钟', sub: '暂停、继续、倍速与时间跳转' },
-    pond: { label: '水体参数', title: '水体参数', sub: '玩具水体模型的产氧、耗氧与温度参数' },
+    pond: { label: '水体参数', title: '水体参数', sub: '水体模型的产氧、耗氧与温度参数' },
     aerator: { label: '增氧策略', title: '增氧策略', sub: '自动阈值控制与手动增氧开关' },
     ponds: { label: '鱼塘管理', title: '鱼塘管理', sub: '新增鱼塘并在多塘之间切换、对比' },
     electricity: { label: '电价管理', title: '电价管理', sub: '峰平谷时段必须完整覆盖 0 - 24 点' },
     history: { label: '历史记录', title: '历史记录', sub: '按鱼塘时间回看溶氧、水温与增氧机状态' },
+    'metric-do': { label: '溶氧分析', title: '溶氧分析', sub: '单指标走势、分布与逐段明细' },
+    'metric-temp': { label: '水温分析', title: '水温分析', sub: '单指标走势、分布与逐段明细' },
+    'metric-ph': { label: 'pH 分析', title: 'pH 分析', sub: '单指标走势、分布与逐段明细' },
     alerts: { label: '告警中心', title: '告警中心', sub: '查看告警等级并确认处理' },
     logs: { label: '系统日志', title: '系统日志', sub: '人的操作记录与增氧机的动作记录' },
-    settings: { label: '系统设置', title: '系统设置', sub: '仿真步长、账号安全与系统重置' }
+    settings: { label: '系统设置', title: '系统设置', sub: '计算步长、账号安全与系统重置' }
   };
 
   const POND_KEY = 'aquaguard.activePond';
@@ -51,7 +56,8 @@
       predictMinutes: 30,
       showPrediction: true,
       showThresholds: true,
-      showTemperature: true
+      showTemperature: true,
+      type: 'line'
     },
     history: {
       preset: '24h',
@@ -61,6 +67,16 @@
       to: '',
       data: null,
       requestId: 0
+    },
+    metric: {
+      route: '',
+      preset: '24h',
+      mode: 'line',
+      page: 1,
+      data: null,
+      requestId: 0,
+      autoRetry: 0,
+      cache: {}
     },
     alerts: { page: 1, size: 10, level: '', status: '', alertType: '', pondId: '' },
     logs: {
@@ -149,6 +165,7 @@
 
   async function init() {
     ui.initTheme();
+    initErrorSurface();
 
     let user;
     try {
@@ -171,7 +188,7 @@
     bindShell();
     initAssistant();
     buildOverview();
-    doChart = new window.Aqua.DoChart(el('doChart'), el('chartTip'), { showTemperature: true });
+    createOverviewChart();
     createCompareCharts();
     bindOverview();
     initChartRanges();
@@ -185,6 +202,10 @@
       if (historyChart) historyChart.draw();
     });
     window.addEventListener('hashchange', handleRoute);
+    // 从浏览器缓存（bfcache）恢复或从后台切回时，重新按当前路由取一次数据
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) handleRoute();
+    });
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) pollRealtime();
     });
@@ -207,6 +228,13 @@
   }
 
   function applySignedInUser(user) {
+    const buildTag = document.querySelector('.version');
+    if (buildTag) buildTag.textContent = 'AquaGuard v1.18 · ' + BUILD;
+    const buildPill = document.getElementById('buildPill');
+    if (buildPill) {
+      buildPill.textContent = BUILD;
+      buildPill.title = '前端构建版本 ' + BUILD;
+    }
     const name = user.displayName || user.username || '用户';
     const role = user.role === 'admin' ? '管理员' : user.role === 'operator' ? '操作员' : (user.role || '');
     setText('currentUserName', name);
@@ -237,6 +265,57 @@
     });
   }
 
+  function showRuntimeBanner(text) {
+    let banner = document.getElementById('runtimeBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'runtimeBanner';
+      banner.className = 'runtime-banner';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = text;
+  }
+
+  function initErrorSurface() {
+    window.addEventListener('error', function (event) {
+      showRuntimeBanner('脚本错误：' + (event.message || event.type));
+    });
+    window.addEventListener('unhandledrejection', function (event) {
+      const reason = event.reason;
+      showRuntimeBanner('未处理异常：' + (reason && reason.message ? reason.message : reason));
+    });
+  }
+
+  function navSubOf(key) {
+    return document.querySelector('[data-nav-sub="' + key + '"]');
+  }
+
+  function bindNavGroups() {
+    document.querySelectorAll('[data-nav-toggle]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        const sub = navSubOf(button.dataset.navToggle);
+        if (!sub) return;
+        const open = !sub.classList.contains('open');
+        sub.classList.toggle('open', open);
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+  }
+
+  /** 当前路由落在子菜单内时自动展开，并给父项高亮 */
+  function syncNavGroups() {
+    document.querySelectorAll('[data-nav-toggle]').forEach(function (button) {
+      const sub = navSubOf(button.dataset.navToggle);
+      if (!sub) return;
+      const hasActive = !!sub.querySelector('.nav-item.active');
+      if (hasActive && !sub.classList.contains('open')) {
+        sub.classList.add('open');
+        button.setAttribute('aria-expanded', 'true');
+      }
+      button.classList.toggle('has-active', hasActive);
+    });
+  }
+
   function bindShell() {
     const menuBtn = el('menuBtn');
     const sidebar = el('sidebar');
@@ -258,9 +337,10 @@
     if (menuBtn) menuBtn.addEventListener('click', openSidebar);
     if (scrim) scrim.addEventListener('click', closeSidebar);
     if (themeBtn) themeBtn.addEventListener('click', function () { ui.toggleTheme(); });
-    document.querySelectorAll('.nav-item').forEach(function (item) {
+    document.querySelectorAll('.nav-item[href]').forEach(function (item) {
       item.addEventListener('click', closeSidebar);
     });
+    bindNavGroups();
     window.addEventListener('resize', function () {
       if (window.innerWidth > 900) closeSidebar();
     });
@@ -550,6 +630,7 @@
       if (active) item.setAttribute('aria-current', 'page');
       else item.removeAttribute('aria-current');
     });
+    syncNavGroups();
 
     const meta = ROUTES[route];
     setText('topPageName', meta.label);
@@ -587,6 +668,11 @@
       case 'history':
         loadHistoryView();
         break;
+      case 'metric-do':
+      case 'metric-temp':
+      case 'metric-ph':
+        loadMetricView(route);
+        break;
       case 'alerts':
         loadAlertsView();
         break;
@@ -608,6 +694,7 @@
       clearInterval(state.pollTimer);
       state.pollTimer = null;
     }
+    state.pollInFlight = false;
     if (state.pollInterval > 0) {
       state.pollTimer = setInterval(function () {
         if (!document.hidden) pollRealtime();
@@ -765,6 +852,11 @@
           '<div class="card-head">' +
             '<div class="card-title"><h3>溶氧趋势</h3><p>历史采样 + 未来趋势推演，阈值线辅助判断</p></div>' +
             '<div class="chart-controls">' +
+              '<div class="chart-type-switch" id="overviewChartTypes" role="group" aria-label="图表类型">' +
+                '<button class="chip' + (state.chart.type === 'line' ? ' active' : '') + '" type="button" data-chart-type="line">折线</button>' +
+                '<button class="chip' + (state.chart.type === 'bar' ? ' active' : '') + '" type="button" data-chart-type="bar">柱状</button>' +
+                '<button class="chip' + (state.chart.type === 'scatter' ? ' active' : '') + '" type="button" data-chart-type="scatter">散点</button>' +
+              '</div>' +
               '<label class="mini-field">历史' +
                 '<select class="input compact" id="chartHistory">' +
                   option('60', '60 点', state.chart.historyLimit === 60) +
@@ -801,7 +893,7 @@
           '<div class="chart-wrap" id="chartWrap">' +
             '<canvas id="doChart" role="img" aria-label="溶氧历史与预测曲线"></canvas>' +
             '<div class="chart-tooltip" id="chartTip"></div>' +
-            '<div class="chart-empty" id="chartEmpty">等待仿真数据…</div>' +
+            '<div class="chart-empty" id="chartEmpty">等待采样数据…</div>' +
           '</div>' +
           '<p class="chart-note">' + icon('info') + '<span id="predictionNote">预测为无噪声确定性前推，仅供趋势参考。</span></p>' +
         '</article>' +
@@ -903,6 +995,51 @@
       '</div>';
   }
 
+  function overviewChartClass() {
+    if (state.chart.type === 'bar') return window.Aqua.DoBarChart;
+    if (state.chart.type === 'scatter') return window.Aqua.DoScatterChart;
+    return window.Aqua.DoChart;
+  }
+
+  /** 按当前形态重建总览主图：折线支持预测/水温/框选，柱状与散点只画历史采样 */
+  function createOverviewChart() {
+    const canvas = el('doChart');
+    if (!canvas) return;
+    if (doChart) {
+      try { doChart.destroy(); } catch (error) { /* 旧实例可能已随 DOM 重建 */ }
+      doChart = null;
+    }
+    const Type = overviewChartClass();
+    if (state.chart.type === 'line') {
+      doChart = new Type(canvas, el('chartTip'), { showTemperature: state.chart.showTemperature });
+      if (doChart.setShowPrediction) doChart.setShowPrediction(state.chart.showPrediction);
+      if (doChart.setShowThresholds) doChart.setShowThresholds(state.chart.showThresholds);
+      bindChartRange(doChart, 'Main', function () { return state.activePondId; });
+    } else {
+      doChart = new Type(canvas, el('chartTip'));
+    }
+    if (state.realtime) doChart.setData(state.realtime);
+    markOverviewChartType();
+    syncOverviewFeatureChips();
+  }
+
+  function markOverviewChartType() {
+    document.querySelectorAll('#overviewChartTypes [data-chart-type]').forEach(function (button) {
+      button.classList.toggle('active', button.dataset.chartType === state.chart.type);
+    });
+  }
+
+  /** 柱状/散点不画预测线与水温线，禁用对应开关，避免"点了没反应" */
+  function syncOverviewFeatureChips() {
+    const isLine = state.chart.type === 'line';
+    ['togglePred', 'toggleTemp'].forEach(function (id) {
+      const node = el(id);
+      if (!node) return;
+      node.disabled = !isLine;
+      node.title = isLine ? '' : '仅折线视图支持';
+    });
+  }
+
   function bindOverview() {
     const pollSelect = el('pollSelect');
     if (pollSelect) {
@@ -953,13 +1090,12 @@
       });
     }
 
-    const togglePred = el('togglePred');
-    if (togglePred) {
+    const togglePred = el('togglePred');    if (togglePred) {
       togglePred.addEventListener('click', function () {
         state.chart.showPrediction = !state.chart.showPrediction;
         togglePred.classList.toggle('active', state.chart.showPrediction);
         togglePred.setAttribute('aria-pressed', String(state.chart.showPrediction));
-        if (doChart) doChart.setShowPrediction(state.chart.showPrediction);
+        if (doChart && doChart.setShowPrediction) doChart.setShowPrediction(state.chart.showPrediction);
         if (compareChartA) compareChartA.setShowPrediction(state.chart.showPrediction);
         if (compareChartB) compareChartB.setShowPrediction(state.chart.showPrediction);
       });
@@ -971,7 +1107,7 @@
         state.chart.showThresholds = !state.chart.showThresholds;
         toggleThr.classList.toggle('active', state.chart.showThresholds);
         toggleThr.setAttribute('aria-pressed', String(state.chart.showThresholds));
-        if (doChart) doChart.setShowThresholds(state.chart.showThresholds);
+        if (doChart && doChart.setShowThresholds) doChart.setShowThresholds(state.chart.showThresholds);
         if (compareChartA) compareChartA.setShowThresholds(state.chart.showThresholds);
         if (compareChartB) compareChartB.setShowThresholds(state.chart.showThresholds);
       });
@@ -983,7 +1119,19 @@
         state.chart.showTemperature = !state.chart.showTemperature;
         toggleTemp.classList.toggle('active', state.chart.showTemperature);
         toggleTemp.setAttribute('aria-pressed', String(state.chart.showTemperature));
-        if (doChart) doChart.setShowTemperature(state.chart.showTemperature);
+        if (doChart && doChart.setShowTemperature) doChart.setShowTemperature(state.chart.showTemperature);
+      });
+    }
+
+    const typeSwitch = el('overviewChartTypes');
+    if (typeSwitch) {
+      typeSwitch.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-chart-type]');
+        if (!button) return;
+        const type = button.dataset.chartType;
+        if (!type || type === state.chart.type) return;
+        state.chart.type = type;
+        createOverviewChart();
       });
     }
 
@@ -1038,6 +1186,10 @@
     chart.onRangeClear = function () {
       hideChartRangeBar(suffix);
     };
+
+    // 切换图表形态后会重新绑定，这里只挂一次 DOM 事件，避免重复弹窗
+    if (bar.dataset.rangeBound === '1') return;
+    bar.dataset.rangeBound = '1';
 
     const ask = bar.querySelector('[data-range-ask]');
     if (ask) {
@@ -1262,6 +1414,13 @@
     if (el('predictionNote') && data.predictionNote) setText('predictionNote', data.predictionNote);
 
     if (doChart) doChart.setData(data);
+
+    // 指标页还没拿到历史接口数据时，用这次轮询的点先画出来并持续刷新
+    if (state.route && state.route.indexOf('metric-') === 0 && !state.metric.data) {
+      const kind = METRIC_ROUTES[state.route];
+      const fallback = kind ? realtimeMetricData(kind) : null;
+      if (fallback) renderMetricData(kind, fallback);
+    }
     updateQuickClock(data);
     updateQuickAerator(data);
     updatePriceQuick(data.pondTime);
@@ -1526,7 +1685,7 @@
         ? await api.clock.resume(state.activePondId)
         : await api.clock.pause(state.activePondId);
       mergeSnapshot(snapshot);
-      ui.toast(paused ? '仿真已继续，鱼塘时间开始推进' : '仿真已暂停，鱼塘时间保持不变', 'success');
+      ui.toast(paused ? '已继续，鱼塘时间开始推进' : '已暂停，鱼塘时间保持不变', 'success');
       pollRealtime();
       updatePriceQuick(snapshot.pondTime);
     } catch (error) {
@@ -1644,25 +1803,25 @@
       '<div class="clock-layout">' +
         '<article class="card clock-hero">' +
           '<div class="clock-hero-top">' +
-            '<span class="eyebrow">SIMULATED POND TIME</span>' +
+            '<span class="eyebrow">LIVE POND TIME</span>' +
             '<span class="badge neutral" id="clockStateBadge">--</span>' +
           '</div>' +
           '<div class="clock-big" id="clockBigTime">--:--</div>' +
           '<div class="clock-sub" id="clockBigDate">--</div>' +
           '<div class="clock-meta">' +
-            '<div><span>模拟倍速</span><strong id="clockSpeed">×' + speed + '</strong></div>' +
+            '<div><span>时间倍速</span><strong id="clockSpeed">×' + speed + '</strong></div>' +
             '<div><span>已运行</span><strong id="clockElapsed">' + fmt.elapsed(data.elapsedMinutes) + '</strong></div>' +
             '<div><span>当前溶氧</span><strong id="clockDo">' + fmt.num(data.currentDo) + '</strong></div>' +
             '<div><span>水体温度</span><strong id="clockTemp">' + fmt.num(data.temperature, 1) + ' ℃</strong></div>' +
           '</div>' +
           '<button class="btn primary lg" id="clockPauseBtn" type="button">' +
-            icon(data.paused ? 'play' : 'pause') + (data.paused ? '继续仿真' : '暂停仿真') +
+            icon(data.paused ? 'play' : 'pause') + (data.paused ? '恢复推进' : '暂停推进') +
           '</button>' +
-          '<p class="tiny muted">暂停后仿真引擎不再推进鱼塘时间，恢复后从当前时刻继续。</p>' +
+          '<p class="tiny muted">暂停后引擎不再推进鱼塘时间，恢复后从当前时刻继续。</p>' +
         '</article>' +
         '<div class="clock-side">' +
           '<article class="card">' +
-            '<div class="card-head"><div><h3>模拟倍速</h3><p>1 真实秒对应多少模拟秒</p></div></div>' +
+            '<div class="card-head"><div><h3>时间倍速</h3><p>数值越大，鱼塘时间推进越快</p></div></div>' +
             '<div class="segmented wrap" id="speedSeg">' +
               [1, 10, 60, 600, 3600].map(function (value) {
                 return '<button type="button" data-speed="' + value + '">' + value + '×</button>';
@@ -1773,7 +1932,7 @@
     setBadge('clockHeaderBadge', (data.paused ? '已暂停' : '运行中') + ' · ×' + (data.speed || 1), data.paused ? 'warn' : 'good');
 
     const pauseBtn = el('clockPauseBtn');
-    if (pauseBtn) pauseBtn.innerHTML = icon(data.paused ? 'play' : 'pause') + (data.paused ? '继续仿真' : '暂停仿真');
+    if (pauseBtn) pauseBtn.innerHTML = icon(data.paused ? 'play' : 'pause') + (data.paused ? '恢复推进' : '暂停推进');
 
     const input = el('speedCustom');
     if (input && document.activeElement !== input) input.value = data.speed || 1;
@@ -1822,7 +1981,7 @@
     return '<div class="page-head">' +
         '<div>' +
           '<p class="eyebrow">水体参数 · WATER MODEL</p>' +
-          '<h1>玩具水体模型参数</h1>' +
+          '<h1>水体模型参数</h1>' +
           '<p class="page-sub">白天通过光合作用产氧，夜间持续耗氧；增氧机按缺氧程度补氧。</p>' +
         '</div>' +
         '<div class="page-actions">' +
@@ -1854,7 +2013,7 @@
               fieldNumber('aeratorRate', '增氧速率', config.aeratorRate, 0, 10, 0.01, '增氧机满负荷补氧强度，0 - 10') +
               fieldNumber('aeratorPowerKw', '增氧机功率（kW）',
                 config.aeratorPowerKw == null ? '1.5' : config.aeratorPowerKw,
-                0.01, 100, 0.01, '用于电费估算，不影响溶氧仿真') +
+                0.01, 100, 0.01, '用于电费估算，不影响溶氧计算') +
             '</div>' +
             '<div class="form-actions">' +
               '<button class="btn ghost" type="button" id="pondResetBtn">还原</button>' +
@@ -1952,7 +2111,7 @@
           state.pondConfig = updated;
           applyPondIdentity(updated);
           updatePondInfo();
-          ui.toast('水体参数已保存，仿真引擎已热更新', 'success');
+          ui.toast('水体参数已保存，引擎已热更新', 'success');
           pollRealtime();
         } catch (error) {
           ui.toast(errorMessage(error), 'error', '保存失败');
@@ -2127,7 +2286,7 @@
         '</article>' +
         '<aside class="side-col">' +
           '<article class="card">' +
-            '<div class="card-head"><div><h3>当前设备状态</h3><p>仿真引擎每秒决策一次</p></div></div>' +
+            '<div class="card-head"><div><h3>当前设备状态</h3><p>引擎每秒决策一次</p></div></div>' +
             '<div class="live-aerator">' +
               '<div class="aerator-orb" id="strategyLiveOrb">' + icon('fan') + '</div>' +
               '<div>' +
@@ -2403,6 +2562,7 @@
         costTileMarkup('cost30', '近 30 天电费') +
       '</div>' +
       '<div class="two-col">' +
+        '<div class="side-col">' +
         '<article class="card">' +
           '<div class="card-head">' +
             '<div><h3>峰平谷时段</h3><p>可以自由拆分或合并时段，但必须完整覆盖一天</p></div>' +
@@ -2418,15 +2578,16 @@
           '<div class="price-band" id="priceBand" style="margin-top:16px"></div>' +
           '<div class="price-legend"><span><i class="peak"></i>峰</span><span><i class="flat"></i>平</span><span><i class="valley"></i>谷</span><span style="margin-left:auto">深色竖线 = 当前鱼塘小时</span></div>' +
         '</article>' +
+        '<article class="card">' +
+          '<div class="card-head"><div><h3>当前时段</h3><p>跟随鱼塘时间实时变化</p></div></div>' +
+          '<div class="price-current" id="priceCurrent">--</div>' +
+          '<div class="kv-list">' +
+            '<div><span>鱼塘时间</span><strong id="pricePondTime">--</strong></div>' +
+            '<div><span>当前小时</span><strong id="priceHour">--</strong></div>' +
+          '</div>' +
+        '</article>' +
+        '</div>' +
         '<aside class="side-col">' +
-          '<article class="card">' +
-            '<div class="card-head"><div><h3>当前时段</h3><p>跟随鱼塘时间实时变化</p></div></div>' +
-            '<div class="price-current" id="priceCurrent">--</div>' +
-            '<div class="kv-list">' +
-              '<div><span>鱼塘时间</span><strong id="pricePondTime">--</strong></div>' +
-              '<div><span>当前小时</span><strong id="priceHour">--</strong></div>' +
-            '</div>' +
-          '</article>' +
           '<article class="card">' +
             '<div class="card-head"><div><h3>24 小时电价</h3><p>按小时展开的单价</p></div></div>' +
             '<div class="price-bars" id="priceBars"></div>' +
@@ -2964,7 +3125,7 @@
         '<div>' +
           '<p class="eyebrow">历史记录 · HISTORY</p>' +
           '<h1>溶氧、水温与 pH 历史</h1>' +
-          '<p class="page-sub">按鱼塘仿真时间回看采样，支持预设区间、自定义时间和拖拽放大；pH 为辅助指标。</p>' +
+          '<p class="page-sub">按鱼塘时间回看采样，支持预设区间、自定义时间和拖拽放大；pH 为辅助指标。</p>' +
         '</div>' +
         '<div class="page-actions">' +
           '<span class="badge neutral" id="historyRetention">保留 -- 天</span>' +
@@ -3358,6 +3519,486 @@
     });
   }
 
+  /* ------------------------------ 指标分析页 ------------------------------ */
+
+  const METRIC_ROUTES = { 'metric-do': 'do', 'metric-temp': 'temp', 'metric-ph': 'ph' };
+  const METRIC_MODES = [
+    { key: 'line', label: '折线' },
+    { key: 'bar', label: '柱状' },
+    { key: 'scatter', label: '散点' },
+    { key: 'distribution', label: '分布' }
+  ];
+  const METRIC_PAGE_SIZE = 10;
+
+  function metricBadgeTone(tone) {
+    if (tone === 'bad') return 'danger';
+    if (tone === 'warn') return 'warn';
+    if (tone === 'good') return 'good';
+    return 'neutral';
+  }
+
+  function metricPondOptions() {
+    return state.ponds.map(function (pond) {
+      return option(String(pond.id), pondLabel(pond),
+        String(state.activePondId) === String(pond.id));
+    }).join('');
+  }
+
+  function metricTemplate(kind) {
+    const metric = window.Aqua.metric.METRICS[kind];
+    const preset = state.metric.preset;
+    const mode = state.metric.mode;
+    const presetChips = [['24h', '近 24 小时'], ['7d', '近 7 天'], ['30d', '近 30 天']]
+      .map(function (item) {
+        return '<button class="chip' + (preset === item[0] ? ' active' : '') +
+          '" type="button" data-metric-preset="' + item[0] + '">' + item[1] + '</button>';
+      }).join('');
+    const modeChips = METRIC_MODES.map(function (item) {
+      return '<button class="chip' + (mode === item.key ? ' active' : '') +
+        '" type="button" data-metric-mode="' + item.key + '">' + item.label + '</button>';
+    }).join('');
+    const unitTag = metric.unit ? '<small>' + esc(metric.unit) + '</small>' : '';
+
+    return '<div class="page-head">' +
+        '<div>' +
+          '<p class="eyebrow">指标分析 · ' + esc(metric.label) + '</p>' +
+          '<h1>' + esc(metric.label) + '分析</h1>' +
+          '<p class="page-sub">单个指标的走势、分布与逐段明细；可在折线、柱状、散点、分布之间切换。</p>' +
+        '</div>' +
+        '<div class="page-actions">' +
+          '<span class="badge neutral" id="metricRetention">保留 -- 天</span>' +
+          '<button class="btn ghost" id="metricRefresh" type="button">' + icon('refresh') + '刷新</button>' +
+          '<button class="btn primary" id="metricExport" type="button">' + icon('list') + '导出 CSV</button>' +
+        '</div>' +
+      '</div>' +
+      '<article class="card metric-filter-card">' +
+        '<div class="filters">' +
+          '<label class="field"><span>鱼塘</span>' +
+            '<select class="input" id="metricPond">' + metricPondOptions() + '</select>' +
+          '</label>' +
+          '<div class="field grow"><span>时间范围</span>' +
+            '<div class="segmented" id="metricPresets">' + presetChips + '</div>' +
+          '</div>' +
+          '<div class="field grow"><span>图表形态</span>' +
+            '<div class="segmented" id="metricModes">' + modeChips + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<p class="history-hint" id="metricRangeNote">数据按鱼塘时间保存，超出保留期的采样会自动清理。</p>' +
+      '</article>' +
+      '<div class="metrics">' +
+        '<article class="metric-card" data-tone="' + metric.tone + '">' +
+          '<div class="metric-head"><span>当前' + esc(metric.label) + '</span>' +
+            '<span class="metric-ico">' + icon(metric.icon) + '</span></div>' +
+          '<div class="metric-value"><span id="metricNow">--</span>' + unitTag + '</div>' +
+          '<div class="metric-foot"><span class="muted" id="metricNowFoot">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="blue">' +
+          '<div class="metric-head"><span>区间均值</span><span class="metric-ico">' + icon('activity') + '</span></div>' +
+          '<div class="metric-value"><span id="metricAvg">--</span>' + unitTag + '</div>' +
+          '<div class="metric-foot"><span class="muted" id="metricAvgFoot">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="amber">' +
+          '<div class="metric-head"><span>区间最高</span><span class="metric-ico">' + icon('spark') + '</span></div>' +
+          '<div class="metric-value"><span id="metricMax">--</span>' + unitTag + '</div>' +
+          '<div class="metric-foot"><span class="muted" id="metricMaxFoot">--</span></div>' +
+        '</article>' +
+        '<article class="metric-card" data-tone="violet">' +
+          '<div class="metric-head"><span>区间最低</span><span class="metric-ico">' + icon('droplet') + '</span></div>' +
+          '<div class="metric-value"><span id="metricMin">--</span>' + unitTag + '</div>' +
+          '<div class="metric-foot"><span class="muted" id="metricMinFoot">--</span></div>' +
+        '</article>' +
+      '</div>' +
+      '<article class="card chart-card metric-chart-card">' +
+        '<div class="card-head">' +
+          '<div class="card-title"><h3 id="metricChartTitle">' + esc(metric.label) + '走势</h3>' +
+            '<p id="metricChartSub">加载中…</p></div>' +
+          '<div class="chart-controls">' +
+            '<span class="chart-drag-hint" id="metricChartHint">' + icon('info') + '悬停查看数值</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="metric-chart" id="metricChart"><div class="chart-empty">加载中…</div></div>' +
+      '</article>' +
+      '<article class="card">' +
+        '<div class="card-head">' +
+          '<div class="card-title"><h3>逐段明细</h3><p id="metricTableSub">--</p></div>' +
+        '</div>' +
+        '<div id="metricTable"><div class="empty">加载中…</div></div>' +
+        '<div class="pager" id="metricPager"></div>' +
+      '</article>';
+  }
+
+  let metricTickTimer = null;
+
+  function startMetricTicker(kind, startedAt, attempt) {
+    stopMetricTicker();
+    metricTickTimer = setInterval(function () {
+      const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+      const text = '正在获取数据… 已等待 ' + seconds + ' 秒' +
+        (attempt > 1 ? '（第 ' + attempt + ' 次尝试）' : '');
+      setMetricText(kind, 'metricChartSub', text);
+      const box = metricViewEl(kind, 'metricChart');
+      const empty = box ? box.querySelector('.chart-empty') : null;
+      if (empty) empty.textContent = text;
+    }, 200);
+  }
+
+  function stopMetricTicker() {
+    if (metricTickTimer) {
+      clearInterval(metricTickTimer);
+      metricTickTimer = null;
+    }
+  }
+
+  /** 用实时轮询已有的历史点拼一份“准实时”数据：网络慢时先用它出图，避免白屏 */
+  function realtimeMetricData(kind) {
+    const data = state.realtime;
+    if (!data || !Array.isArray(data.history) || !data.history.length) return null;
+    const base = fmt.parseLocal(data.pondTime);
+    if (!base) return null;
+    const elapsed = Number(data.elapsedMinutes) || 0;
+    const baseDate = new Date(base.y, base.mo - 1, base.d, base.h, base.mi, base.s || 0);
+    const points = data.history.map(function (point) {
+      const offset = Number(point.minuteOffset);
+      if (!isFinite(offset)) return null;
+      const date = new Date(baseDate.getTime() - (elapsed - offset) * 60000);
+      return {
+        time: historyIso(date),
+        doValue: point.doValue,
+        temperature: point.temperature,
+        ph: point.ph,
+        aeratorOn: point.aeratorOn
+      };
+    }).filter(function (point) { return point && point.time; });
+    if (!points.length) return null;
+    return {
+      pondId: state.activePondId,
+      from: points[0].time,
+      to: historyIso(data.pondTime),
+      currentPondTime: data.pondTime,
+      bucketMinutes: 1,
+      retentionDays: 31,
+      sampleCount: points.length,
+      points: points,
+      summary: data.thresholds || {},
+      live: true
+    };
+  }
+
+  function metricCacheKey(kind) {
+    return kind + ':' + (state.activePondId || 0) + ':' + state.metric.preset;
+  }
+
+  /**
+   * 三个指标页的模板结构相同，DOM id 也相同；必须限定在各自的路由容器里查找，
+   * 否则 getElementById 会命中排在最前面的「溶氧」页，导致水温 / pH 页一直停在加载态。
+   */
+  function metricViewEl(kind, id) {
+    const view = el('view-metric-' + kind);
+    return view ? view.querySelector('#' + id) : null;
+  }
+
+  function setMetricText(kind, id, text) {
+    const node = metricViewEl(kind, id);
+    if (node) node.textContent = text;
+  }
+
+  async function loadMetricView(route) {
+    const view = el('view-' + route);
+    if (!view) return;
+    try {
+      const kind = METRIC_ROUTES[route] || 'do';
+      if (state.metric.route !== route) {
+        state.metric.route = route;
+        state.metric.page = 1;
+        state.metric.data = null;
+      }
+      state.metric.requestId += 1;
+      const requestId = state.metric.requestId;
+
+      view.innerHTML = metricTemplate(kind);
+      bindMetricView(route, kind);
+      // 先走秒：只要脚本在执行，这里就会显示已等待时长；有数据时会被渲染结果覆盖
+      startMetricTicker(kind, Date.now(), 1);
+
+      let rendered = false;
+      // 先用上一次的数据秒开；没有缓存就退而用实时轮询里的点，避免一直空等
+      const cached = state.metric.cache[metricCacheKey(kind)];
+      if (cached) {
+        renderMetricData(kind, cached);
+        rendered = true;
+      } else {
+        const live = realtimeMetricData(kind);
+        if (live) {
+          renderMetricData(kind, live);
+          rendered = true;
+        }
+      }
+
+      await fetchMetricData(route, kind, requestId, 1, !rendered);
+    } catch (error) {
+      showRuntimeBanner('指标页初始化失败：' + (error && error.message ? error.message : error));
+    }
+  }
+
+  async function fetchMetricData(route, kind, requestId, attempt, showTicker) {
+    const tries = attempt || 1;
+    const box = metricViewEl(kind, 'metricChart');
+    try {
+      const pondId = state.activePondId;
+      let current = historyNow();
+      if (!current) {
+        const probe = await api.records.series(pondId, null, null);
+        current = probe && probe.currentPondTime;
+      }
+      if (!current) throw new Error('鱼塘时间尚未初始化，请稍后再试');
+
+      const days = HISTORY_PRESETS[state.metric.preset] || 1;
+      const to = historyIso(current);
+      const from = historyIso(historyShift(current, -days * 24 * 60));
+      const timeout = new Promise(function (resolve, reject) {
+        setTimeout(function () { reject(new Error('请求超时，请刷新重试')); }, 8000);
+      });
+      const data = await Promise.race([api.records.series(pondId, from, to), timeout]);
+      if (requestId !== state.metric.requestId) return;
+      stopMetricTicker();
+
+      state.metric.data = data;
+      state.metric.autoRetry = 0;
+      state.metric.cache[metricCacheKey(kind)] = data;
+      try {
+        renderMetricData(kind, data);
+      } catch (renderError) {
+        if (box) box.innerHTML = ui.errorCard('渲染失败：' + (renderError && renderError.message
+          ? renderError.message : renderError));
+        setMetricText(kind, 'metricChartSub', '渲染失败');
+      }
+    } catch (error) {
+      if (requestId !== state.metric.requestId) return;
+      // 首次失败自动重试一次，避免偶发丢包直接把页面卡死
+      if (tries < 2) {
+        stopMetricTicker();
+        await new Promise(function (resolve) { setTimeout(resolve, 800); });
+        if (requestId !== state.metric.requestId) return;
+        return fetchMetricData(route, kind, requestId, tries + 1, true);
+      }
+      stopMetricTicker();
+      if (state.metric.cache[metricCacheKey(kind)]) {
+        setMetricText(kind, 'metricChartSub', '刷新失败，当前显示上次数据：' + errorMessage(error));
+        return;
+      }
+      if (realtimeMetricData(kind)) {
+        setMetricText(kind, 'metricChartSub', '接口响应异常，当前显示实时轮询数据：' + errorMessage(error));
+        return;
+      }
+      if (box) box.innerHTML = ui.errorCard(errorMessage(error));
+      setMetricText(kind, 'metricChartSub', '加载失败：' + errorMessage(error));
+
+      // 每 5 秒自动再试一次，共 3 轮；成功即停止，用户不必手动刷新
+      if (state.metric.autoRetry < 3 && requestId === state.metric.requestId) {
+        state.metric.autoRetry += 1;
+        setTimeout(function () {
+          if (state.metric.requestId === requestId && state.route === route) {
+            fetchMetricData(route, kind, requestId, 1, false);
+          }
+        }, 5000);
+      }
+    }
+  }
+
+  function metricPoints(data, metric) {
+    const points = Array.isArray(data && data.points) ? data.points : [];
+    return points.map(function (point) {
+      const parsed = fmt.parseLocal(point.time);
+      const date = parsed
+        ? new Date(parsed.y, parsed.mo - 1, parsed.d, parsed.h, parsed.mi, parsed.s || 0)
+        : null;
+      return { time: date, iso: historyIso(date), value: metric.pick(point), aerator: !!point.aeratorOn };
+    }).filter(function (point) {
+      return point.time && isFinite(point.value) && point.value > 0;
+    });
+  }
+
+  function renderMetricData(kind, data) {
+    stopMetricTicker();
+    const M = window.Aqua.metric;
+    const metric = M.METRICS[kind];
+    const points = metricPoints(data, metric);
+    const summary = (data && data.summary) || {};
+    const thresholds = M.resolveThresholds(metric, summary);
+    const stats = M.summarize(points, metric, summary);
+    const decimals = metric.decimals;
+    const retention = Number(data && data.retentionDays) || 31;
+
+    setMetricText(kind, 'metricRetention', '保留 ' + retention + ' 天');
+    setMetricText(kind, 'metricRangeNote', '鱼塘时间 ' + fmt.dateTime(data.from) + ' → ' + fmt.dateTime(data.to) +
+      ' · 聚合粒度 ' + historyDuration(data.bucketMinutes) + ' · 保留 ' + retention + ' 天');
+
+    setMetricText(kind, 'metricNow', stats.current === null ? '--' : fmt.num(stats.current, decimals));
+    setMetricText(kind, 'metricNowFoot', points.length
+      ? '最近采样 ' + fmt.dateTimeShort(points[points.length - 1].iso)
+      : '该区间没有采样');
+
+    setMetricText(kind, 'metricAvg', stats.avg === null ? '--' : fmt.num(stats.avg, decimals));
+    setMetricText(kind, 'metricAvgFoot', stats.count
+      ? '共 ' + stats.count + ' 个聚合点' + (stats.low + stats.high > 0
+        ? ' · 越界 ' + (stats.low + stats.high) + ' 点' : ' · 全部在范围内')
+      : '--');
+
+    let maxPoint = null;
+    let minPoint = null;
+    points.forEach(function (point) {
+      if (!maxPoint || point.value > maxPoint.value) maxPoint = point;
+      if (!minPoint || point.value < minPoint.value) minPoint = point;
+    });
+    setMetricText(kind, 'metricMax', maxPoint ? fmt.num(maxPoint.value, decimals) : '--');
+    setMetricText(kind, 'metricMaxFoot', maxPoint ? fmt.dateTimeShort(maxPoint.iso) : '--');
+    setMetricText(kind, 'metricMin', minPoint ? fmt.num(minPoint.value, decimals) : '--');
+    setMetricText(kind, 'metricMinFoot', minPoint ? fmt.dateTimeShort(minPoint.iso) : '--');
+
+    setMetricText(kind, 'metricChartSub', points.length
+      ? points.length + ' 个聚合点 · ' + METRIC_MODES.filter(function (item) {
+        return item.key === state.metric.mode;
+      }).map(function (item) { return item.label; })[0] + '视图'
+      : '该区间没有采样');
+
+    const chartBox = metricViewEl(kind, 'metricChart');
+    if (chartBox) {
+      chartBox.innerHTML = state.metric.mode === 'distribution'
+        ? M.distributionSvg(points, { unit: metric.unit, decimals: decimals })
+        : M.trendSvg(points, {
+            mode: state.metric.mode,
+            unit: metric.unit,
+            decimals: decimals,
+            thresholds: thresholds,
+            label: metric.label
+          });
+    }
+
+    renderMetricTable(kind, metric, points, summary);
+  }
+
+  function renderMetricTable(kind, metric, points, summary) {
+    const box = metricViewEl(kind, 'metricTable');
+    const pager = metricViewEl(kind, 'metricPager');
+    if (!box) return;
+
+    const total = points.length;
+    const pages = Math.max(1, Math.ceil(total / METRIC_PAGE_SIZE));
+    if (state.metric.page > pages) state.metric.page = pages;
+    if (state.metric.page < 1) state.metric.page = 1;
+    const page = state.metric.page;
+    const slice = points.slice((page - 1) * METRIC_PAGE_SIZE, page * METRIC_PAGE_SIZE);
+
+    setMetricText(kind, 'metricTableSub', total
+      ? '共 ' + total + ' 个聚合点 · 每页 ' + METRIC_PAGE_SIZE + ' 条'
+      : '该区间没有采样');
+
+    if (!slice.length) {
+      box.innerHTML = '<div class="empty">当前时间范围没有采样</div>';
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+
+    const rows = slice.map(function (point) {
+      const status = window.Aqua.metric.statusOf(point.value, metric, summary);
+      return '<tr>' +
+        '<td class="nowrap">' + fmt.dateTimeShort(point.iso) + '</td>' +
+        '<td class="num"><strong>' + fmt.num(point.value, metric.decimals) + '</strong>' +
+          (metric.unit ? '<span class="cell-sub">' + esc(metric.unit) + '</span>' : '') + '</td>' +
+        '<td><span class="badge ' + metricBadgeTone(status.tone) + '">' + esc(status.text) + '</span></td>' +
+        '<td>' + (point.aerator
+          ? '<span class="badge good">运行</span>'
+          : '<span class="badge neutral">停止</span>') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    box.innerHTML = '<div class="table-wrap"><table><thead><tr>' +
+      '<th>时间</th><th class="num">' + esc(metric.label) + '</th><th>状态</th><th>增氧机</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+    if (pager) {
+      pager.innerHTML = pagerMarkup({ current: page, pages: pages, total: total });
+      bindPager(pager, function (target) {
+        state.metric.page = target;
+        renderMetricTable(kind, metric, points, summary);
+      });
+    }
+  }
+
+  function bindMetricView(route, kind) {
+    const refresh = metricViewEl(kind, 'metricRefresh');
+    if (refresh) {
+      refresh.addEventListener('click', function () {
+        state.metric.page = 1;
+        loadMetricView(route);
+      });
+    }
+
+    const exportButton = metricViewEl(kind, 'metricExport');
+    if (exportButton) {
+      exportButton.addEventListener('click', function () { exportMetricCsv(kind); });
+    }
+
+    const pondSelect = metricViewEl(kind, 'metricPond');
+    if (pondSelect) {
+      pondSelect.addEventListener('change', function () { selectPond(pondSelect.value); });
+    }
+
+    const presets = metricViewEl(kind, 'metricPresets');
+    if (presets) {
+      presets.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-metric-preset]');
+        if (!button) return;
+        state.metric.preset = button.dataset.metricPreset;
+        state.metric.page = 1;
+        loadMetricView(route);
+      });
+    }
+
+    const modes = metricViewEl(kind, 'metricModes');
+    if (modes) {
+      modes.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-metric-mode]');
+        if (!button) return;
+        state.metric.mode = button.dataset.metricMode;
+        modes.querySelectorAll('[data-metric-mode]').forEach(function (item) {
+          item.classList.toggle('active', item === button);
+        });
+        if (state.metric.data) renderMetricData(kind, state.metric.data);
+      });
+    }
+  }
+
+  function exportMetricCsv(kind) {
+    const metric = window.Aqua.metric.METRICS[kind];
+    const data = state.metric.data;
+    if (!data) {
+      ui.toast('还没有可导出的数据', 'warn');
+      return;
+    }
+    const points = metricPoints(data, metric);
+    if (!points.length) {
+      ui.toast('当前区间没有采样', 'warn');
+      return;
+    }
+    const header = '时间,' + metric.label + (metric.unit ? '(' + metric.unit + ')' : '') + ',增氧机';
+    const lines = points.map(function (point) {
+      return fmt.dateTime(point.iso) + ',' + point.value.toFixed(metric.decimals) + ',' +
+        (point.aerator ? '开启' : '关闭');
+    });
+    const blob = new Blob(['\ufeff' + [header].concat(lines).join('\r\n')],
+      { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'metric-' + metric.key + '-' + fmt.dateInputValue(data.from) + '.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    ui.toast('已导出 ' + points.length + ' 条' + metric.label + '记录', 'success');
+  }
+
   /* ------------------------------ 告警中心 ------------------------------ */
 
   async function loadAlertsView() {
@@ -3368,7 +4009,7 @@
         '<div>' +
           '<p class="eyebrow">告警中心 · ALERT CENTER</p>' +
           '<h1>异常告警与确认</h1>' +
-          '<p class="page-sub">告警由仿真引擎自动产生，确认操作会记录操作人与时间。</p>' +
+          '<p class="page-sub">告警由引擎自动产生，确认操作会记录操作人与时间。</p>' +
         '</div>' +
         '<div class="page-actions">' +
           '<button class="btn ghost" id="alertRefresh" type="button">' + icon('refresh') + '刷新列表</button>' +
@@ -3793,7 +4434,7 @@
         '<div>' +
           '<p class="eyebrow">鱼塘管理 · PONDS</p>' +
           '<h1>多鱼塘与双塘对比</h1>' +
-          '<p class="page-sub">新增鱼塘后，每个鱼塘拥有独立的仿真引擎、策略、时钟与告警；在总览可并排观察两塘变化。</p>' +
+          '<p class="page-sub">新增鱼塘后，每个鱼塘拥有独立的引擎、策略、时钟与告警；在总览可并排观察两塘变化。</p>' +
         '</div>' +
         '<div class="page-actions">' +
           '<span class="badge info">共 ' + state.ponds.length + ' 个鱼塘</span>' +
@@ -3811,7 +4452,7 @@
         '<aside class="side-col">' +
           '<article class="card create-pond-card">' +
             '<h3>新增鱼塘</h3>' +
-            '<p class="muted small">水体参数会复制当前第一个鱼塘，并自动创建默认增氧策略、系统设置和独立仿真引擎。</p>' +
+            '<p class="muted small">水体参数会复制当前第一个鱼塘，并自动创建默认增氧策略、系统设置和独立运行引擎。</p>' +
             '<form id="pondCreateForm" novalidate>' +
               '<div class="field">' +
                 '<label for="newPondName">鱼塘名称</label>' +
@@ -4055,8 +4696,8 @@
     return '<div class="page-head">' +
         '<div>' +
           '<p class="eyebrow">系统设置 · SYSTEM</p>' +
-          '<h1>账号安全与仿真引擎</h1>' +
-          '<p class="page-sub">可修改登录账号和密码；仿真步长与采样间隔必须是 60 秒的整数倍，修改会热更新到运行中的引擎。</p>' +
+          '<h1>账号安全与运行引擎</h1>' +
+          '<p class="page-sub">可修改登录账号和密码；计算步长与采样间隔必须是 60 秒的整数倍，修改会热更新到运行中的引擎。</p>' +
         '</div>' +
         '<div class="page-actions">' +
           '<span class="badge neutral">步长 ' + esc(settings.stepSeconds) + ' 秒 · 采样 ' + esc(settings.sampleIntervalSec) + ' 秒</span>' +
@@ -4074,9 +4715,9 @@
             '</div>' +
             '<div class="form-grid" style="margin-top:16px">' +
               '<div class="field">' +
-                '<label for="stepSeconds">模拟步长（秒）</label>' +
+                '<label for="stepSeconds">计算步长（秒）</label>' +
                 '<input class="input" id="stepSeconds" name="stepSeconds" type="number" min="60" max="3600" step="60" value="' + esc(settings.stepSeconds) + '">' +
-                '<span class="field-hint">每次定时器 tick 推进的模拟秒数，60 - 3600 且为 60 的倍数。</span>' +
+                '<span class="field-hint">每次计算推进的时间秒数，60 - 3600 且为 60 的倍数。</span>' +
               '</div>' +
               '<div class="field">' +
                 '<label for="sampleIntervalSec">采样间隔（秒）</label>' +
@@ -4100,7 +4741,7 @@
           '<article class="card danger-card">' +
             '<h3>危险操作</h3>' +
             '<p>重置会把鱼塘时间恢复到今天 00:00，溶氧回到 6.00 mg/L，倍速回到 1，并清空内存中的历史曲线。数据库里的配置与日志不会删除。</p>' +
-            '<button class="btn danger full" id="resetSimBtn" type="button">' + icon('alert-triangle') + '重置仿真系统</button>' +
+            '<button class="btn danger full" id="resetSimBtn" type="button">' + icon('alert-triangle') + '重置系统</button>' +
           '</article>' +
         '</aside>' +
       '</div>';
@@ -4157,7 +4798,7 @@
     if (resetBtn) {
       resetBtn.addEventListener('click', function () {
         ui.confirm({
-          title: '重置仿真系统？',
+          title: '重置系统？',
           message: '鱼塘时间会回到今天 00:00，溶氧回到 6.00 mg/L，倍速回到 1，并清空内存中的历史曲线。\n此操作会写入系统日志。',
           confirmText: '确认重置',
           danger: true
@@ -4166,7 +4807,7 @@
           busy(resetBtn, async function () {
             try {
               const snapshot = await api.settings.reset(state.activePondId);
-              ui.toast('仿真已重置到 ' + fmt.dateTime(snapshot.pondTime), 'success');
+              ui.toast('系统已重置到 ' + fmt.dateTime(snapshot.pondTime), 'success');
               mergeSnapshot(snapshot);
               if (doChart) doChart.setData(null);
               pollRealtime();
@@ -4295,9 +4936,9 @@
 
   function validateSettings(payload) {
     if (!Number.isInteger(payload.stepSeconds) || payload.stepSeconds < 60 || payload.stepSeconds > 3600) {
-      return '模拟步长需在 60 - 3600 秒之间';
+      return '计算步长需在 60 - 3600 秒之间';
     }
-    if (payload.stepSeconds % 60 !== 0) return '模拟步长必须是 60 的整数倍';
+    if (payload.stepSeconds % 60 !== 0) return '计算步长必须是 60 的整数倍';
     if (!Number.isInteger(payload.sampleIntervalSec) || payload.sampleIntervalSec < 60 || payload.sampleIntervalSec > 86400) {
       return '采样间隔需在 60 - 86400 秒之间';
     }
@@ -4336,7 +4977,7 @@
       db.status === 'fulfilled' ? db.value : errorMessage(db.reason));
     html += row('list', '历史缓冲', buffer.status === 'fulfilled' ? 'good' : 'warn',
       buffer.status === 'fulfilled' ? (buffer.value + ' 点') : '未知',
-      buffer.status === 'fulfilled' ? '仿真引擎内存中缓存的溶氧采样数' : errorMessage(buffer.reason));
+      buffer.status === 'fulfilled' ? '引擎内存中缓存的溶氧采样数' : errorMessage(buffer.reason));
     html += row('bolt', '后端地址', 'info', '同源', api.baseUrl);
 
     container.innerHTML = html;
@@ -4494,14 +5135,14 @@
     const paused = !!(state.realtime && state.realtime.paused);
     items.push({
       group: '操作',
-      label: paused ? '继续仿真' : '暂停仿真',
+      label: paused ? '恢复推进' : '暂停推进',
       hint: '鱼塘时钟控制，会记录到操作日志',
       tag: '需确认',
       icon: paused ? 'play' : 'pause',
-      keywords: 'pause resume clock simulation 暂停 继续 时钟 仿真',
+      keywords: 'pause resume clock 暂停 继续 时钟',
       run: function () {
         ui.confirm({
-          title: paused ? '继续仿真？' : '暂停仿真？',
+          title: paused ? '恢复推进？' : '暂停推进？',
           message: paused
             ? '鱼塘时间将继续按当前倍速推进。\n此操作会写入系统日志。'
             : '鱼塘时间将停止推进，增氧策略保持当前状态。\n此操作会写入系统日志。',

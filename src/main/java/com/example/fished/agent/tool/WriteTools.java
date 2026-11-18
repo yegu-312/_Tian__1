@@ -74,14 +74,14 @@ public class WriteTools {
                         this::describeUpdateStrategy),
 
                 new SimpleAgentTool(spec("pause_pond",
-                        "暂停指定鱼塘的仿真时钟，鱼塘时间停止推进。这是写操作，调用后不会立即生效，需要用户在前端确认。",
+                        "暂停指定鱼塘的时钟，鱼塘时间停止推进。这是写操作，调用后不会立即生效，需要用户在前端确认。",
                         object(props("pondId", prop("integer", "鱼塘 id")), List.of("pondId"))),
                         false,
                         (args, ctx) -> setPaused(args, ctx, true),
                         this::describePause),
 
                 new SimpleAgentTool(spec("resume_pond",
-                        "继续指定鱼塘的仿真时钟。这是写操作，调用后不会立即生效，需要用户在前端确认。",
+                        "继续指定鱼塘的时钟。这是写操作，调用后不会立即生效，需要用户在前端确认。",
                         object(props("pondId", prop("integer", "鱼塘 id")), List.of("pondId"))),
                         false,
                         (args, ctx) -> setPaused(args, ctx, false),
@@ -152,14 +152,14 @@ public class WriteTools {
         SimulationEngine engine = pondManager.requireEngine(pondId);
         PondSnapshot snapshot = pause ? engine.pause() : engine.resume();
         String detail = pause
-                ? "鱼塘#" + pondId + " 暂停仿真，鱼塘时间停在 " + snapshot.pondTime()
-                : "鱼塘#" + pondId + " 继续仿真，鱼塘时间从 " + snapshot.pondTime() + " 接着走";
+                ? "鱼塘#" + pondId + " 暂停运行，鱼塘时间停在 " + snapshot.pondTime()
+                : "鱼塘#" + pondId + " 继续运行，鱼塘时间从 " + snapshot.pondTime() + " 接着走";
         operationLogService.record(OperationModuleEnum.CLOCK,
                 pause ? OperationActionEnum.PAUSE : OperationActionEnum.RESUME, detail, context.operator());
 
         ObjectNode node = mapper.createObjectNode();
         node.put("ok", true);
-        node.put("message", pondManager.nameOf(pondId) + (pause ? "仿真已暂停" : "仿真已继续"));
+        node.put("message", pondManager.nameOf(pondId) + (pause ? "已暂停" : "已恢复"));
         node.put("pondId", pondId);
         node.put("paused", snapshot.paused());
         node.put("pondTime", snapshot.pondTime().toString());
@@ -311,11 +311,11 @@ public class WriteTools {
     }
 
     private String describePause(JsonNode args) {
-        return "暂停" + pondManager.nameOf(pondId(args)) + "的仿真时钟，鱼塘时间将停止推进。";
+        return "暂停" + pondManager.nameOf(pondId(args)) + "的时钟，鱼塘时间将停止推进。";
     }
 
     private String describeResume(JsonNode args) {
-        return "继续" + pondManager.nameOf(pondId(args)) + "的仿真时钟。";
+        return "继续" + pondManager.nameOf(pondId(args)) + "的时钟。";
     }
 
     private String describeExchangeWater(JsonNode args) {

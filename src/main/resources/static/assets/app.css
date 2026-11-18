@@ -235,7 +235,27 @@ button { cursor: pointer; }
   animation: breathe 2.6s ease-in-out infinite;
 }
 
-.nav { display: flex; flex-direction: column; gap: 3px; }
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* 菜单过长时只滚动导航区，底部版本信息固定可见 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-left: 15px;
+  margin-left: -15px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.nav::-webkit-scrollbar { width: 6px; }
+.nav::-webkit-scrollbar-track { background: transparent; }
+.nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+}
+.sidebar-foot { flex: 0 0 auto; }
 .nav-label {
   padding: 15px 12px 6px;
   font-size: 10px;
@@ -1025,6 +1045,32 @@ textarea.input { height: auto; min-height: 90px; padding: 10px 11px; resize: ver
   background: var(--surface);
   color: var(--primary-strong);
   box-shadow: 0 1px 4px rgba(13, 43, 49, 0.12);
+}
+.chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.build-pill {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Courier New", monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  opacity: 0.72;
+}
+.runtime-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  max-width: 78vw;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: rgba(158, 42, 42, 0.95);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.5;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
 }
 
 .chart-legend {
@@ -2940,4 +2986,164 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .history-chart-card { min-height: 420px; padding: 14px; }
   .history-chart-card .chart-controls { justify-content: flex-start; }
   .history-chart-wrap { min-height: 260px; }
+}
+
+/* ==========================================================================
+   指标分析（单指标页面：溶氧 / 水温 / pH）
+   ========================================================================== */
+.metric-filter-card { padding-bottom: 6px; }
+.metric-filter-card .filters {
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+}
+.metric-filter-card .history-hint {
+  margin: 0 0 10px;
+}
+.metric-chart-card .chart-controls { gap: 8px; }
+.metric-chart {
+  position: relative;
+  min-height: 230px;
+  margin-top: 4px;
+}
+.metric-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.metric-chart .chart-empty {
+  position: static;
+  min-height: 180px;
+}
+
+/* ==========================================================================
+   侧边栏二级菜单（父项可折叠）
+   ========================================================================== */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nav-parent {
+  width: 100%;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.nav-parent .nav-caret {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+  transition: transform 0.18s ease;
+}
+.nav-parent[aria-expanded="true"] .nav-caret { transform: rotate(90deg); }
+.nav-parent.has-active { color: #ffffff; }
+.nav-sub {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 4px 20px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(122, 200, 200, 0.18);
+}
+.nav-sub.open { display: flex; }
+.nav-child {
+  padding: 7px 10px;
+  border-radius: 0 9px 9px 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #9dbcc1;
+}
+.nav-child:hover {
+  color: #e6f6f8;
+  background: rgba(255, 255, 255, 0.05);
+}
+.nav-child.active {
+  color: #ffffff;
+  background: linear-gradient(90deg, rgba(37, 185, 167, 0.2), rgba(37, 185, 167, 0.03));
+}
+.nav-child.active::before { display: none; }
+
+
+/* ==========================================================================
+   排版统一：卡片基线 / 筛选控件 / 表格数值列
+   ========================================================================== */
+/* 指标卡纵向布局，说明文字统一贴底，避免同一排卡片基线参差 */
+.metric-card {
+  display: flex;
+  flex-direction: column;
+}
+/* 统一数值区高度：四种卡片字号不同（36 / 26 / 33px），
+   不锁定高度会导致同一排的说明行上下错位 10px 以上 */
+.metric-card .metric-value {
+  min-height: 44px;
+}
+/* 说明行改为固定间距：原先的 margin-top:auto 只对“说明行是最后一个元素”的卡片生效，
+   造成同一排里 96 / 124 / 144 三种高度 */
+.metric-card .metric-foot {
+  margin-top: 9px;
+}
+
+/* 网格间距统一 16px */
+.metrics { gap: 16px; }
+
+/* 筛选栏：分段按钮与输入框统一 34px，消除同一行 3px 错位 */
+.filters .segmented {
+  height: 34px;
+  box-sizing: border-box;
+}
+.filters .segmented .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 分段按钮组按内容宽度收缩，不再被拉伸成整行宽的空框 */
+.filters .field .segmented { align-self: flex-start; }
+/* 指标页两个分段筛选按内容排布，避免右侧留大片空白 */
+.metric-filter-card .filters .field.grow { flex: 0 1 auto; }
+
+/* 数值列：单位跟在数值后面同一行，右对齐更整齐 */
+td.num .cell-sub {
+  display: inline;
+  margin-left: 3px;
+}
+
+/* 双列主布局比例统一，切换页面时左右栏不跳动 */
+.overview-grid { grid-template-columns: minmax(0, 1.85fr) minmax(300px, 0.9fr); }
+
+/* ==========================================================================
+   双列页面等高：两栏底边对齐
+   ========================================================================== */
+.two-col,
+.ponds-layout {
+  align-items: stretch;
+}
+/* 列容器改成纵向弹性布局，让最后一张卡吸收剩余高度 */
+.side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.side-col > :last-child { flex: 1 1 auto; }
+/* 设置页：危险操作卡保持紧凑贴底，由"系统健康"负责撑满 */
+#view-settings .side-col > .danger-card { flex: 0 0 auto; }
+#view-settings .side-col > .card:first-child { flex: 1 1 auto; }
+
+/* 被拉伸的卡片：内部元素纵向排布，末尾内容贴到底部，
+   避免整块留白堆在卡片下方 */
+.two-col > .card,
+.side-col > .card {
+  display: flex;
+  flex-direction: column;
+}
+.two-col > .card > :last-child,
+.side-col > .card > :last-child {
+  margin-top: auto;
 }

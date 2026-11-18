@@ -84,7 +84,7 @@ public class ReadTools {
     public List<AgentTool> all() {
         return List.of(
                 tool("get_current_time",
-                        "查询现实世界的当前日期、时间、星期和时区。用户问“现在几点”“今天几号/星期几”，或需要基于现实时间计算间隔时调用。注意：这是服务器所在现实世界的时间，不是鱼塘仿真时间。",
+                        "查询现实世界的当前日期、时间、星期和时区。用户问“现在几点”“今天几号/星期几”，或需要基于现实时间计算间隔时调用。注意：这是服务器所在现实世界的时间，不是鱼塘时间。",
                         object(props(
                                 "timezone", prop("string", "可选，IANA 时区，如 Asia/Shanghai、UTC，默认使用服务器时区")),
                                 List.of()),
@@ -160,7 +160,7 @@ public class ReadTools {
                         (args, ctx) -> strategy(args)),
 
                 tool("get_pond_settings",
-                        "查询指定鱼塘的运行设置：安全否决是否启用、仿真步长、采样间隔。",
+                        "查询指定鱼塘的运行设置：安全否决是否启用、计算步长、采样间隔。",
                         object(props("pondId", prop("integer", "鱼塘 id")), List.of("pondId")),
                         (args, ctx) -> settings(args)),
 
@@ -209,7 +209,7 @@ public class ReadTools {
         node.put("timezone", zone.getId());
         node.put("datetime", now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
         node.put("epochMillis", now.toInstant().toEpochMilli());
-        node.put("note", "现实世界时间，不是鱼塘仿真时间；查鱼塘时间请用 get_pond_realtime");
+        node.put("note", "现实世界时间，不是鱼塘时间；查鱼塘时间请用 get_pond_realtime");
         return json(node);
     }
 

@@ -34,7 +34,7 @@ public class ClockController {
         SimulationEngine engine = pondManager.requireEngine(pondId);
         PondSnapshot snapshot = engine.pause();//暂停时间
         operationLogService.record(OperationModuleEnum.CLOCK, OperationActionEnum.PAUSE,
-                "鱼塘#" + pondId + " 暂停仿真，鱼塘时间停在 " + snapshot.pondTime(), operatorOf(operator));
+                "鱼塘#" + pondId + " 暂停运行，鱼塘时间停在 " + snapshot.pondTime(), operatorOf(operator));
         return Result.success(snapshot);
     }
     //鱼塘时间继续走
@@ -44,7 +44,7 @@ public class ClockController {
         SimulationEngine engine = pondManager.requireEngine(pondId);
         PondSnapshot snapshot = engine.resume();//推进时间
         operationLogService.record(OperationModuleEnum.CLOCK, OperationActionEnum.RESUME,
-                "鱼塘#" + pondId + " 继续仿真，鱼塘时间从 " + snapshot.pondTime() + " 接着走", operatorOf(operator));
+                "鱼塘#" + pondId + " 继续运行，鱼塘时间从 " + snapshot.pondTime() + " 接着走", operatorOf(operator));
         return Result.success(snapshot);
 
     }
@@ -56,7 +56,7 @@ public class ClockController {
 
         PondSnapshot snapshot = pondManager.requireEngine(pondId).setSpeed(speed);
         operationLogService.record(OperationModuleEnum.CLOCK, OperationActionEnum.SPEED,
-                "鱼塘#" + pondId + " 倍速改为 " + speed + "（1 真实秒 = " + speed + " 模拟秒）", operatorOf(operator));
+                "鱼塘#" + pondId + " 倍速改为 ×" + speed, operatorOf(operator));
         return Result.success(snapshot);
 
     }

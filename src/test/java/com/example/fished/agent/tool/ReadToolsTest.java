@@ -71,7 +71,7 @@ class ReadToolsTest {
         assertTrue(result.get("weekday").asText().startsWith("星期"));
         assertTrue(result.get("epochMillis").asLong() > 0);
         assertDoesNotThrow(() -> ZonedDateTime.parse(result.get("datetime").asText()));
-        assertTrue(result.get("note").asText().contains("不是鱼塘仿真时间"));
+        assertTrue(result.get("note").asText().contains("不是鱼塘时间"));
     }
 
     @Test

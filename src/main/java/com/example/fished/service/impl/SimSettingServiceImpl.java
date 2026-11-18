@@ -69,7 +69,7 @@ public class SimSettingServiceImpl extends ServiceImpl<SimSettingMapper, SimSett
                 .appendIfChanged("安全否决",
                         before.getSafetyVetoEnabled(),
                         after.getSafetyVetoEnabled())
-                .appendIfChanged("模拟步长",
+                .appendIfChanged("计算步长",
                         before.getStepSeconds() +
                                 "秒", after.getStepSeconds() + "秒")
                 .appendIfChanged("采样间隔",
